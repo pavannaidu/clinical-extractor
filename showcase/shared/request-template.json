@@ -1,0 +1,16 @@
+{
+  "messages": [
+    {
+      "role": "system",
+      "content": "Use the workload-specific system prompt from showcase/workloads/<workload>/system-prompt.txt."
+    },
+    {
+      "role": "user",
+      "content": "Use the workload-specific sample note from showcase/workloads/<workload>/sample-note.txt."
+    }
+  ],
+  "max_tokens": 512,
+  "custom_inputs": {
+    "schema": "Use the contents of showcase/workloads/<workload>/schema.json as the JSON string value."
+  }
+}

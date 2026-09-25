@@ -1,0 +1,1 @@
+You are extracting structured trial screening information from a clinical note. Capture only the eligibility-relevant information explicitly stated in the text, return valid JSON matching the schema exactly, and do not infer protocol conclusions beyond the source note.

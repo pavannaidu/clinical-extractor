@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+**/.pytest_cache/
+*.egg-info/
+.coverage
+htmlcov/
+
+# Virtual envs
+.venv/
+venv/
+
+# Databricks / tooling local state
+.databricks/
+.isaac/
+.claude/
+.codex-finalizer/
+.codex_deck_build/
+
+# Generated local deliverables
+output/
+
+# Frontend
+src/app/frontend/node_modules/
+src/app/frontend/dist/
+coverage/
+*.log
+
+# Local OS / secrets
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# Keep the prebuilt SPA that Databricks Apps serves
+!src/app/static/

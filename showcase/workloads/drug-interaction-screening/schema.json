@@ -1,0 +1,26 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "medications": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "dosage": { "type": ["string", "null"] },
+          "route": { "type": ["string", "null"] },
+          "frequency": { "type": ["string", "null"] },
+          "indication": { "type": ["string", "null"] }
+        },
+        "required": ["name", "dosage", "route", "frequency", "indication"]
+      }
+    },
+    "interaction_concerns": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "required": ["medications", "interaction_concerns"]
+}

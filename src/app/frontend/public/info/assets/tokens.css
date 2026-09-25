@@ -1,0 +1,158 @@
+/* Databricks corporate-brand fallback tokens.
+   Prefer the target project's current official tokens when they exist. */
+
+@font-face {
+  font-family: "DM Sans";
+  src: url("./fonts/dm-sans-regular.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "DM Sans";
+  src: url("./fonts/dm-sans-italic.ttf") format("truetype");
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "DM Sans";
+  src: url("./fonts/dm-sans-medium.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "DM Sans";
+  src: url("./fonts/dm-sans-medium-italic.ttf") format("truetype");
+  font-style: italic;
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "DM Sans";
+  src: url("./fonts/dm-sans-bold.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "DM Sans";
+  src: url("./fonts/dm-sans-bold-italic.ttf") format("truetype");
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "DM Mono";
+  src: url("./fonts/dm-mono-light.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "DM Mono";
+  src: url("./fonts/dm-mono-light-italic.ttf") format("truetype");
+  font-style: italic;
+  font-weight: 300;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "DM Mono";
+  src: url("./fonts/dm-mono-regular.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "DM Mono";
+  src: url("./fonts/dm-mono-italic.ttf") format("truetype");
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "DM Mono";
+  src: url("./fonts/dm-mono-medium.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "DM Mono";
+  src: url("./fonts/dm-mono-medium-italic.ttf") format("truetype");
+  font-style: italic;
+  font-weight: 500;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: light;
+
+  --db-navy: #1b3139;
+  --db-navy-accent: #1b5162;
+  --db-lava: #ff3621;
+  --db-coral: #ff5f46;
+  --db-oat: #f9f7f4;
+  --db-oat-strong: #eeede9;
+  --db-white: #ffffff;
+  --db-ink: #3a3838;
+  --db-ink-muted: #5a5755;
+  --db-line: #e4e2dd;
+  --db-row-alt: #f3f3f3;
+
+  --db-green: #00a972;
+  --db-amber: #ffab00;
+  --db-maroon: #98102a;
+  --db-slate: #618794;
+  --db-blue: #4359ff;
+
+  --db-canvas: var(--db-oat);
+  --db-surface: var(--db-white);
+  --db-surface-subtle: var(--db-oat-strong);
+  --db-text: var(--db-ink);
+  --db-heading: var(--db-navy);
+  --db-accent: var(--db-lava);
+  --db-focus: var(--db-blue);
+
+  --db-font-sans: "DM Sans", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --db-font-mono: "DM Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+
+  --db-type-12: 12px;
+  --db-type-16: 16px;
+  --db-type-20: 20px;
+  --db-type-24: 24px;
+  --db-type-32: 32px;
+  --db-type-40: 40px;
+  --db-type-56: 56px;
+  --db-type-64: 64px;
+
+  --db-space-1: 4px;
+  --db-space-2: 8px;
+  --db-space-3: 12px;
+  --db-space-4: 16px;
+  --db-space-5: 20px;
+  --db-space-6: 24px;
+  --db-space-8: 32px;
+  --db-space-12: 48px;
+  --db-space-16: 64px;
+  --db-space-24: 96px;
+
+  --db-radius-sm: 4px;
+  --db-radius-md: 8px;
+  --db-radius-lg: 12px;
+
+  --db-shadow-sm: 0 1px 3px rgba(27, 49, 57, 0.10);
+  --db-shadow-md: 0 8px 24px rgba(27, 49, 57, 0.12);
+}

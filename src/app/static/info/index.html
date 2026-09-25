@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta
+    name="description"
+    content="A Databricks executive deck for choosing a structured AI path in life sciences."
+  >
+  <title>Structured AI in Life Sciences</title>
+  <script>document.documentElement.classList.add('js');</script>
+  <link rel="stylesheet" href="/info/assets/tokens.css">
+  <link rel="stylesheet" href="/info/deck.css?v=20260914-4">
+</head>
+<body data-deck-title="Structured AI in Life Sciences">
+  <a class="skip-link" href="#why-structured-ai">Skip to presentation</a>
+
+  <div class="deck-shell" id="deck-shell">
+    <header class="deck-tools deck-chrome" aria-label="Presentation view controls">
+      <img class="shell-mark" src="/info/assets/brand/databricks-symbol-color.svg" alt="">
+      <span class="shell-title">Structured AI · Life sciences</span>
+      <span class="shell-divider" aria-hidden="true"></span>
+      <button class="tool-button" id="view-toggle" type="button" aria-pressed="false">Read</button>
+      <button class="tool-button" id="fullscreen-button" type="button" aria-pressed="false">Full screen</button>
+    </header>
+
+    <main class="stage-viewport" id="main-content" tabindex="-1">
+      <nav class="reader-index" id="reader-index" aria-label="Deck index">
+        <strong>Deck index</strong>
+        <div class="reader-index-list" id="reader-index-list"></div>
+      </nav>
+
+      <div class="stage" id="stage">
+        <section
+          class="slide slide--dark thesis-slide"
+          id="why-structured-ai"
+          data-section="Context"
+          data-short="Why it matters"
+          aria-labelledby="slide-1-title"
+        >
+          <div class="slide-grid thesis-grid">
+            <div class="span-6 thesis-copy">
+              <img class="brand-logo brand-logo--light" src="/info/assets/brand/databricks-logo-white.svg" alt="Databricks">
+              <p class="eyebrow">Structured AI in life sciences</p>
+              <h1 id="slide-1-title">Structured output turns clinical narrative into <span class="text-coral">testable data.</span></h1>
+              <p class="lede">
+                A schema makes each extracted fact explicit enough to evaluate, govern,
+                query, and use in downstream workflows.
+              </p>
+              <p class="prepared-by">Prepared by Pavan Naidu · September 2026</p>
+            </div>
+
+            <div class="span-6 clinical-exhibit" aria-label="Illustrative clinical note transformed into structured fields">
+              <div class="exhibit-label">Illustrative clinical note</div>
+              <blockquote>“Patient denies chest pain. Continue metformin 500 mg twice daily.”</blockquote>
+
+              <div class="transform-arrow" aria-hidden="true">
+                <span></span>
+                <b>Schema</b>
+              </div>
+
+              <div class="field-grid">
+                <div><span>symptom</span><strong>chest pain</strong></div>
+                <div><span>assertion</span><strong>negated</strong></div>
+                <div><span>medication</span><strong>metformin</strong></div>
+                <div><span>dose_mg</span><strong>500</strong></div>
+                <div><span>frequency</span><strong>twice daily</strong></div>
+              </div>
+
+              <div class="outcome-rail">
+                <span><b>Evaluate</b> field by field</span>
+                <span><b>Operate</b> as data</span>
+                <span><b>Govern</b> with source</span>
+              </div>
+            </div>
+          </div>
+
+          <footer class="source-line source-line--dark">
+            <strong>Sources</strong>
+            <a href="https://docs.databricks.com/aws/en/agents/agent-bricks/info-extraction" target="_blank" rel="noreferrer">Databricks Information Extraction</a>
+            <span>·</span>
+            <a href="https://docs.databricks.com/aws/en/unstructured/" target="_blank" rel="noreferrer">Work with unstructured data</a>
+          </footer>
+        </section>
+
+        <section
+          class="slide decision-slide"
+          id="decision-path"
+          data-section="Decision"
+          data-short="Decision path"
+          aria-labelledby="slide-2-title"
+        >
+          <div class="slide-inner">
+            <p class="eyebrow">Progressive decision path</p>
+            <h2 id="slide-2-title">Choose the least-complex path that passes the same clinical evaluation.</h2>
+            <p class="exhibit-frame">Hold constant: source set · extraction schema · reviewer rubric · critical-field metrics</p>
+
+            <div class="decision-ladder" aria-label="Three progressive model options">
+              <article class="decision-step decision-step--start">
+                <div class="decision-order">01</div>
+                <div>
+                  <p class="step-label">Start managed</p>
+                  <h3>AI Extract or FMAPI</h3>
+                  <p>Use a supported managed model when it meets field-level quality requirements.</p>
+                </div>
+                <div class="move-gate">
+                  <span>Move on only if</span>
+                  <strong>You need a model, modality, or grammar the managed path does not provide.</strong>
+                </div>
+              </article>
+
+              <article class="decision-step">
+                <div class="decision-order">02</div>
+                <div>
+                  <p class="step-label">Add runtime control</p>
+                  <h3>Custom model + vLLM + XGrammar</h3>
+                  <p>Own the custom model, vLLM serving and inference engine, and XGrammar decoder.</p>
+                </div>
+                <div class="move-gate">
+                  <span>Move on only if</span>
+                  <strong>Repeatable semantic errors remain after prompt and schema changes.</strong>
+                </div>
+              </article>
+
+              <article class="decision-step">
+                <div class="decision-order">03</div>
+                <div>
+                  <p class="step-label">Adapt model behavior</p>
+                  <h3>Fine-tuned custom LLM</h3>
+                  <p>Train against adjudicated examples, then re-score the same held-out review.</p>
+                </div>
+                <div class="move-gate">
+                  <span>Ship only if</span>
+                  <strong>Quality lifts materially without unacceptable latency or cost.</strong>
+                </div>
+              </article>
+            </div>
+
+            <div
+              class="complexity-ramp"
+              role="img"
+              aria-label="Implementation and operating complexity increases from managed extraction to custom model serving to fine-tuning. Directional, not to scale."
+            >
+              <div class="complexity-ramp__title">
+                <strong>Implementation + operating complexity</strong>
+                <span>Directional—not to scale</span>
+              </div>
+              <div class="complexity-ramp__visual" aria-hidden="true">
+                <div class="complexity-ramp__arrow"></div>
+                <div class="complexity-ramp__labels">
+                  <span>Managed</span>
+                  <span>Custom model</span>
+                  <span>Fine-tune</span>
+                </div>
+              </div>
+            </div>
+
+            <footer class="source-line">Conceptual decision framework synthesized from the Databricks product paths cited on slides 3–5.</footer>
+          </div>
+        </section>
+
+        <section
+          class="slide managed-slide"
+          id="managed"
+          data-section="Options"
+          data-short="Managed"
+          aria-labelledby="slide-3-title"
+        >
+          <div class="slide-inner">
+            <p class="eyebrow">Option 1 · Managed extraction</p>
+            <h2 id="slide-3-title">Managed extraction is the default when supported models meet quality needs.</h2>
+            <p class="exhibit-frame">Choose the abstraction—not a different standard of clinical truth.</p>
+
+            <div class="managed-comparison" aria-label="Comparison of AI Extract and Foundation Model APIs">
+              <article class="managed-column managed-column--highlight">
+                <header>
+                  <img src="/info/assets/brand/agent-bricks-icon-full-color.svg" alt="" aria-hidden="true">
+                  <div>
+                    <p class="step-label">Higher-level workflow</p>
+                    <h3>AI Extract</h3>
+                  </div>
+                </header>
+                <dl class="comparison-rows">
+                  <div><dt>Use when</dt><dd>You want a managed information-extraction workflow.</dd></div>
+                  <div><dt>Inputs</dt><dd>Text, PDFs, images, or tables.</dd></div>
+                  <div><dt>Output</dt><dd>Structured fields with citations and confidence scores.</dd></div>
+                  <div><dt>Batch SQL</dt><dd><code>ai_extract(...)</code> over table rows or scheduled Lakeflow pipelines.</dd></div>
+                </dl>
+                <div class="api-contract">
+                  <span>Online REST</span>
+                  <code>POST /api/2.0/ai-functions/ai-extract</code>
+                </div>
+              </article>
+
+              <article class="managed-column">
+                <header>
+                  <img src="/info/assets/brand/mosaic-ai-icon-full-color.svg" alt="" aria-hidden="true">
+                  <div>
+                    <p class="step-label">Model-level contract</p>
+                    <h3>FMAPI structured outputs</h3>
+                  </div>
+                </header>
+                <dl class="comparison-rows">
+                  <div><dt>Use when</dt><dd>Your application owns prompting and orchestration.</dd></div>
+                  <div><dt>Contract</dt><dd>JSON Schema via <code>response_format</code>; supported subset, up to 64 keys.</dd></div>
+                  <div><dt>Online</dt><dd>OpenAI-compatible client, MLflow Deployments SDK, or endpoint REST.</dd></div>
+                  <div><dt>Batch SQL</dt><dd><code>ai_query(...)</code> over table rows or production pipelines.</dd></div>
+                </dl>
+                <div class="api-contract">
+                  <span>Online REST</span>
+                  <code>POST /serving-endpoints/{endpoint}/invocations</code>
+                </div>
+              </article>
+            </div>
+
+            <div class="truth-band">
+              <strong>Structure is not truth.</strong>
+              For either path, compare extracted values with adjudicated clinical ground truth; measure critical-field precision, recall, and omissions.
+            </div>
+
+            <footer class="source-line">
+              <strong>Sources</strong>
+              <a href="https://docs.databricks.com/aws/en/agents/agent-bricks/info-extraction" target="_blank" rel="noreferrer">AI Extract SQL + REST</a>
+              <span>·</span>
+              <a href="https://docs.databricks.com/aws/en/sql/language-manual/functions/ai_query" target="_blank" rel="noreferrer">ai_query SQL</a>
+              <span>·</span>
+              <a href="https://docs.databricks.com/aws/en/machine-learning/model-serving/structured-outputs" target="_blank" rel="noreferrer">Structured outputs</a>
+              <span>·</span>
+              <a href="https://docs.databricks.com/aws/en/machine-learning/foundation-model-apis/api-reference" target="_blank" rel="noreferrer">FMAPI REST</a>
+            </footer>
+          </div>
+        </section>
+
+        <section
+          class="slide runtime-slide"
+          id="custom-runtime"
+          data-section="Options"
+          data-short="Custom model"
+          aria-labelledby="slide-4-title"
+        >
+          <div class="slide-inner">
+            <p class="eyebrow">Option 2 · Custom model + vLLM + XGrammar</p>
+            <h2 id="slide-4-title">Custom model + vLLM + XGrammar gives you model, serving, and decoder control—not semantic accuracy.</h2>
+            <p class="exhibit-frame">Use this path when the model, modality, or grammar is itself a requirement.</p>
+
+            <div class="architecture" aria-label="Conceptual custom LLM development and serving flow">
+              <div class="architecture-boundary">
+                <span class="boundary-label">Databricks governed platform</span>
+                <div class="architecture-flow">
+                  <article class="architecture-node">
+                    <img src="/info/assets/brand/unity-catalog-icon-full-color.svg" alt="" aria-hidden="true">
+                    <span>01 · Govern</span>
+                    <h3>Model + data</h3>
+                    <p>Model assets and source data under Unity Catalog governance.</p>
+                  </article>
+                  <article class="architecture-node">
+                    <div class="gpu-mark" aria-hidden="true">GPU</div>
+                    <span>02 · Validate</span>
+                    <h3>Serverless GPU</h3>
+                    <p>Develop and benchmark the custom model on serverless GPU.</p>
+                  </article>
+                  <article class="architecture-node architecture-node--focus">
+                    <img src="/info/assets/brand/mosaic-ai-icon-full-color.svg" alt="" aria-hidden="true">
+                    <span>03 · Constrain</span>
+                    <h3>vLLM + XGrammar</h3>
+                    <p>Use vLLM as the serving and inference engine; constrain generation with XGrammar.</p>
+                  </article>
+                  <article class="architecture-node">
+                    <img src="/info/assets/brand/mosaic-ai-icon-full-color.svg" alt="" aria-hidden="true">
+                    <span>04 · Serve</span>
+                    <h3>Model Serving</h3>
+                    <p>Package with MLflow, register, and deploy the custom model with vLLM serving.</p>
+                  </article>
+                </div>
+              </div>
+            </div>
+
+            <div class="ownership-rail">
+              <div><strong>Databricks provides</strong><span>GPU compute · MLflow packaging · Unity Catalog registration · Model Serving</span></div>
+              <div><strong>Your team owns</strong><span>License and weights · tokenizer and dependencies · vLLM entrypoint · XGrammar integration · regression tests</span></div>
+            </div>
+
+            <footer class="source-line">
+              <strong>Sources</strong>
+              <a href="https://docs.databricks.com/aws/en/machine-learning/model-serving/serve-custom-llms" target="_blank" rel="noreferrer">Serve custom LLMs</a>
+              <span>·</span>
+              <a href="https://docs.databricks.com/aws/en/machine-learning/ai-runtime/" target="_blank" rel="noreferrer">Serverless GPU compute</a>
+              <span>· Conceptual flow; validate implementation details for the selected model.</span>
+            </footer>
+          </div>
+        </section>
+
+        <section
+          class="slide slide--dark tuning-slide"
+          id="fine-tune"
+          data-section="Options"
+          data-short="Fine-tune"
+          aria-labelledby="slide-5-title"
+        >
+          <div class="slide-inner">
+            <p class="status-sticker">Preliminary</p>
+            <p class="eyebrow">Option 3 · Fine-tuned custom LLM</p>
+            <h2 id="slide-5-title">Fine-tune only after a held-out review isolates repeatable semantic errors.</h2>
+            <p class="exhibit-frame exhibit-frame--dark">The schema, source set, and reviewer rubric stay fixed while model behavior changes.</p>
+
+            <div class="tuning-gates" aria-label="Four evidence gates for fine-tuning">
+              <article>
+                <span>Gate 1</span>
+                <h3>Measure the gap</h3>
+                <p>Label recurring semantic errors on a reviewed baseline.</p>
+              </article>
+              <article>
+                <span>Gate 2</span>
+                <h3>Adapt behavior</h3>
+                <p>Train on adjudicated examples with LoRA, QLoRA, or full fine-tuning.</p>
+              </article>
+              <article>
+                <span>Gate 3</span>
+                <h3>Track + govern</h3>
+                <p>Use MLflow for experiments and Unity Catalog for the deployable model.</p>
+              </article>
+              <article>
+                <span>Gate 4</span>
+                <h3>Re-score + serve</h3>
+                <p>Compare the same holdout, then deploy with the vLLM serving and inference engine plus XGrammar.</p>
+              </article>
+            </div>
+
+            <div class="separation-exhibit">
+              <div>
+                <span>Fine-tuning</span>
+                <strong>Improves the probability of choosing the right clinical value.</strong>
+              </div>
+              <div class="not-equal" aria-hidden="true">≠</div>
+              <div>
+                <span>XGrammar</span>
+                <strong>Ensures the generated value lands in valid JSON.</strong>
+              </div>
+            </div>
+
+            <div class="decision-close">
+              <strong>Decision:</strong>
+              Ship only when critical-field precision/recall improves materially without unacceptable omissions, latency, or cost.
+            </div>
+
+            <footer class="source-line source-line--dark">
+              <strong>Sources</strong>
+              <a href="https://docs.databricks.com/aws/en/machine-learning/ai-runtime/" target="_blank" rel="noreferrer">Databricks AI Runtime</a>
+              <span>·</span>
+              <a href="https://docs.databricks.com/aws/en/machine-learning/model-serving/serve-custom-llms" target="_blank" rel="noreferrer">Custom LLM serving</a>
+            </footer>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <nav class="deck-controls deck-chrome" aria-label="Presentation controls">
+      <button class="nav-button" id="previous-slide" type="button" aria-label="Previous slide">←</button>
+      <div class="narrative-rail" id="narrative-rail" role="group" aria-label="Deck outline"></div>
+      <button class="nav-button" id="next-slide" type="button" aria-label="Next slide">→</button>
+    </nav>
+  </div>
+
+  <p class="sr-only" id="live-status" aria-live="polite"></p>
+  <script src="/info/deck.js"></script>
+</body>
+</html>

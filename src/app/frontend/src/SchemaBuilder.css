@@ -1,0 +1,116 @@
+.sb-semantics-note,
+.sb-preserved-note {
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-input);
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+}
+
+.sb-semantics-note strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.sb-semantics-note code {
+  color: var(--text-primary);
+}
+
+.sb-field-flags {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+
+.sb-field-details {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 0 34px 4px 0;
+}
+
+.sb-field-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.sb-field-flag input {
+  margin: 0;
+}
+
+.sb-description-editor {
+  display: flex;
+  min-width: 0;
+}
+
+.sb-description-editor.is-expanded {
+  display: grid;
+  flex: 1 0 100%;
+  gap: 4px;
+  width: 100%;
+}
+
+.sb-description-toggle {
+  align-self: flex-start;
+  justify-self: start;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-accent);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.35;
+  padding: 2px 4px;
+}
+
+.sb-description-toggle:hover {
+  background: var(--accent-soft);
+}
+
+.sb-description-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.sb-container .sb-description-input {
+  width: 100%;
+  height: auto;
+  min-height: 64px;
+  max-height: none;
+  padding: 7px 8px;
+  resize: vertical;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.sb-container .sb-description-input:focus {
+  border-color: var(--accent);
+}
+
+.sb-container > .sb-description-editor {
+  margin-bottom: 6px;
+}
+
+.sb-container > .sb-description-editor.is-expanded {
+  flex: 0 0 auto;
+}
+
+.sb-nested-block > .sb-description-editor {
+  margin: 2px 0 6px;
+}

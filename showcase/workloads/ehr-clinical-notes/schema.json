@@ -1,0 +1,52 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "diagnoses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "condition": { "type": "string" },
+          "status": { "type": ["string", "null"] }
+        },
+        "required": ["condition", "status"]
+      }
+    },
+    "medications": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "dosage": { "type": ["string", "null"] },
+          "frequency": { "type": ["string", "null"] }
+        },
+        "required": ["name", "dosage", "frequency"]
+      }
+    },
+    "vitals": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "blood_pressure": { "type": ["string", "null"] },
+        "heart_rate": { "type": ["integer", "null"] },
+        "temperature_f": { "type": ["number", "null"] },
+        "oxygen_saturation_percent": { "type": ["integer", "null"] }
+      },
+      "required": [
+        "blood_pressure",
+        "heart_rate",
+        "temperature_f",
+        "oxygen_saturation_percent"
+      ]
+    },
+    "follow_up_actions": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "required": ["diagnoses", "medications", "vitals", "follow_up_actions"]
+}

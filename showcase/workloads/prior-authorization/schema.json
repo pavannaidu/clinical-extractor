@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "requested_service": { "type": ["string", "null"] },
+    "diagnosis": { "type": ["string", "null"] },
+    "diagnosis_code": { "type": ["string", "null"] },
+    "prior_conservative_therapy": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "supporting_rationale": { "type": ["string", "null"] },
+    "urgency": { "type": ["string", "null"] }
+  },
+  "required": [
+    "requested_service",
+    "diagnosis",
+    "diagnosis_code",
+    "prior_conservative_therapy",
+    "supporting_rationale",
+    "urgency"
+  ]
+}

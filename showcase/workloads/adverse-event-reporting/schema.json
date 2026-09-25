@@ -1,0 +1,26 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "suspect_drug": { "type": ["string", "null"] },
+    "dose_regimen": { "type": ["string", "null"] },
+    "indication": { "type": ["string", "null"] },
+    "adverse_event": { "type": ["string", "null"] },
+    "severity": { "type": ["string", "null"] },
+    "onset_timing": { "type": ["string", "null"] },
+    "action_taken": { "type": ["string", "null"] },
+    "outcome": { "type": ["string", "null"] },
+    "rechallenge_performed": { "type": ["boolean", "null"] }
+  },
+  "required": [
+    "suspect_drug",
+    "dose_regimen",
+    "indication",
+    "adverse_event",
+    "severity",
+    "onset_timing",
+    "action_taken",
+    "outcome",
+    "rechallenge_performed"
+  ]
+}

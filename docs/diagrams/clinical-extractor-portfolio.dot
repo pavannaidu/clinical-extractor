@@ -1,0 +1,93 @@
+digraph ClinicalExtractorPortfolio {
+  graph [
+    rankdir=TB,
+    newrank=true,
+    compound=true,
+    bgcolor="#FFFFFF",
+    pad="0.28",
+    nodesep="0.34",
+    ranksep="0.58",
+    splines=polyline,
+    outputorder=edgesfirst,
+    fontname="Arial",
+    fontsize=20,
+    fontcolor="#17324D",
+    label="Structured AI portfolio architecture: one acceptance contract, multiple paths",
+    labelloc=t
+  ];
+
+  node [
+    shape=box,
+    style="rounded,filled",
+    color="#29465B",
+    penwidth=1.4,
+    fontname="Arial",
+    fontsize=13,
+    fontcolor="#17324D",
+    margin="0.18,0.13"
+  ];
+  edge [color="#38556B", penwidth=1.5, arrowsize=0.8, fontname="Arial", fontsize=10, fontcolor="#38556B"];
+
+  customer_requirements [
+    label="Customer requirements\nClinical extraction | Summarization\nStructured intelligence | Domain workflows",
+    fillcolor="#E7F0FA"
+  ];
+
+  subgraph cluster_interactive {
+    label="Clinical Extractor: interactive comparison for one workload";
+    color="#8CAFC7";
+    fontcolor="#17324D";
+    fontsize=15;
+    fontname="Arial";
+    style="rounded,dashed";
+    bgcolor="#F8FBFD";
+
+    contract [label="Input + original\nJSON Schema", fillcolor="#E9EFF4"];
+    extract [label="AI Extract\nfield-schema projection", fillcolor="#DCEFFC"];
+    fmapi [label="FMAPI\nresponse_format.json_schema", fillcolor="#DCEFFC"];
+    vllm [label="Custom Model Serving\nvLLM + XGrammar guided_json", fillcolor="#E9E1FA"];
+    validate [label="Strict JSON parse +\noriginal-schema validation", fillcolor="#FFF0D6"];
+    compare [label="Side-by-side fields,\nschema status + serving metrics", fillcolor="#DDF4E6"];
+
+    { rank=same; extract; fmapi; vllm; }
+    contract -> extract;
+    contract -> fmapi;
+    contract -> vllm;
+    extract -> validate;
+    fmapi -> validate;
+    vllm -> validate;
+    validate -> compare;
+  }
+
+  quality [
+    label="Separate decision gates\nReviewed factual quality\nLatency | throughput | cost",
+    fillcolor="#FFF6E8"
+  ];
+
+  customer_requirements -> contract [style=dashed, label="informed asset"];
+  compare -> quality [style=dashed, label="requires more evidence"];
+
+  subgraph cluster_adjacent {
+    label="Adjacent reference paths, not modes of the interactive app";
+    color="#A7B5BF";
+    fontcolor="#425665";
+    fontsize=14;
+    fontname="Arial";
+    style="rounded,dashed";
+    bgcolor="#FAFBFC";
+
+    batch [
+      label="Batch inference: two reference routes\nSpark ai_query → custom endpoint\nOR Serverless GPU + Ray + vLLM",
+      fillcolor="#EEF1F4"
+    ];
+    finetune [
+      label="Model adaptation reference (synthetic data)\nServerless GPU QLoRA → MLflow → UC\n→ GPU Model Serving (direct XGrammar wrapper)\nProduction deployment requires validation",
+      fillcolor="#EEF1F4"
+    ];
+
+    { rank=same; batch; finetune; }
+  }
+
+  customer_requirements -> batch [style=dashed, color="#8797A3", fontcolor="#6F808D", label="batch needs"];
+  customer_requirements -> finetune [style=dashed, color="#8797A3", fontcolor="#6F808D", label="domain-model needs"];
+}

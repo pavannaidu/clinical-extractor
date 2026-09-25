@@ -1,0 +1,39 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "disease": { "type": ["string", "null"] },
+    "ecog_status": { "type": ["integer", "null"] },
+    "prior_therapy_summary": { "type": ["string", "null"] },
+    "key_labs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "value": { "type": ["string", "null"] }
+        },
+        "required": ["name", "value"]
+      }
+    },
+    "inclusion_flags": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "exclusion_flags": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "screening_status": { "type": ["string", "null"] }
+  },
+  "required": [
+    "disease",
+    "ecog_status",
+    "prior_therapy_summary",
+    "key_labs",
+    "inclusion_flags",
+    "exclusion_flags",
+    "screening_status"
+  ]
+}

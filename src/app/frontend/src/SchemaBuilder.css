@@ -241,6 +241,7 @@
 }
 
 .sb-modal {
+  position: relative;
   display: flex;
   flex-direction: column;
   width: min(760px, 100%);
@@ -300,7 +301,7 @@
 .sb-modal-form {
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 0 28px 26px;
+  padding: 0 28px 102px;
 }
 
 .sb-form-field {
@@ -473,6 +474,17 @@
   border-top: 1px solid var(--border-light);
 }
 
+.sb-modal-form > .sb-modal-footer {
+  position: absolute;
+  right: 28px;
+  bottom: 0;
+  left: 28px;
+  margin: 0;
+  padding: 16px 0 20px;
+  background: var(--bg-surface);
+  box-shadow: 0 -10px 22px color-mix(in srgb, var(--bg-surface) 88%, transparent);
+}
+
 .sb-confirm-modal > .sb-modal-footer {
   margin: 0;
   padding: 18px 28px 26px;
@@ -581,22 +593,22 @@
   }
 
   .sb-modal-form {
-    padding: 0 18px 20px;
+    padding: 0 18px 98px;
   }
 
   .sb-modal-options {
     grid-template-columns: 1fr;
   }
 
-  .sb-modal-footer {
-    position: sticky;
-    bottom: -20px;
-    margin-inline: -18px;
-    padding: 16px 18px 20px;
-    background: var(--bg-surface);
+  .sb-modal-form > .sb-modal-footer {
+    right: 18px;
+    left: 18px;
+    padding-bottom: 18px;
   }
 
   .sb-confirm-modal > .sb-modal-footer {
+    position: static;
+    margin: 0;
     padding: 16px 18px 20px;
   }
 

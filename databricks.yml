@@ -24,6 +24,10 @@ variables:
   # ── Fine-tuning ───────────────────────────────────────────────────────────
   finetune_registered_model_name:
     default: medgemma_xgrammar_finetuned
+  qwen3_finetuned_registered_model_name:
+    default: qwen3_vllm_structured
+  qwen3_finetuned_endpoint_name:
+    default: qwen3-4b-finetuned-vllm-endpoint
 
 targets:
   dev:
@@ -260,6 +264,30 @@ resources:
               max_seq_length: "2048"
               num_training_examples: "50"
 
+    finetune_qwen3_disease:
+      name: "[finetune] QLoRA Fine-tune Qwen3-4B for Disease Extraction"
+      environments:
+        - environment_key: ai_v6
+          spec:
+            environment_version: "6"
+      tasks:
+        - task_key: finetune
+          environment_key: ai_v6
+          compute:
+            hardware_accelerator: GPU_1xA10
+          notebook_task:
+            notebook_path: ./src/finetune/finetune_qwen3_disease.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              registered_model_name: ${var.qwen3_finetuned_registered_model_name}
+              endpoint_name: ${var.qwen3_finetuned_endpoint_name}
+              max_train_examples: "2048"
+              max_eval_examples: "256"
+              num_epochs: "1"
+              learning_rate: "2e-4"
+              max_seq_length: "1024"
+
   apps:
     clinical_extractor:
       name: clinical-extractor
@@ -283,6 +311,10 @@ resources:
         - name: qwen-vllm
           serving_endpoint:
             name: qwen3-4b-vllm-endpoint
+            permission: CAN_QUERY
+        - name: qwen-finetuned-vllm
+          serving_endpoint:
+            name: ${var.qwen3_finetuned_endpoint_name}
             permission: CAN_QUERY
         - name: claude-opus-4-6
           serving_endpoint:

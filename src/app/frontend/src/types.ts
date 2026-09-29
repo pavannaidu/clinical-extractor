@@ -44,6 +44,8 @@ export interface InferenceRequest {
   runtime?: "model_serving" | "ai_extract";
   ai_extract_options?: {
     precision: boolean;
+    enable_citations: boolean;
+    enable_confidence_scores: boolean;
   } | null;
   max_tokens?: number | null;
 }
@@ -311,6 +313,9 @@ export interface ModelSlot {
   notice: string | null;
   activeTab: "formatted" | "raw" | "evidence";
   aiExtractPrecision: boolean;
+  aiExtractCitations: boolean;
+  aiExtractConfidenceScores: boolean;
+  maxOutputTokensOverride: string;
   copied: boolean;
   outputTokenLimit: number | null;
   outputTokenLimitSource: "model_default" | "override" | null;

@@ -32,6 +32,8 @@ EXPECTED_PRESET_IDS = {
     "drug_interaction_screening",
     "ehr_note_extraction",
     "prior_authorization",
+    "disease_mention_extraction",
+    "snomed_omop_mapping",
 }
 
 
@@ -110,6 +112,42 @@ def test_builtin_presets_have_descriptions_and_examples():
     assert len({preset["system_prompt"] for preset in PRESETS}) == len(PRESETS)
 
 
+def test_clinical_concept_extraction_is_evidence_grounded_and_uncoded():
+    preset = next(preset for preset in PRESETS if preset["id"] == "snomed_omop_mapping")
+    schema = json.loads(preset["schema_json"])
+    entity_properties = schema["properties"]["entities"]["items"]["properties"]
+
+    assert set(entity_properties) == {
+        "source_text",
+        "entity_type",
+        "assertion",
+        "temporality",
+        "experiencer",
+        "body_site",
+        "laterality",
+    }
+    assert not {
+        "concept_id",
+        "concept_code",
+        "concept_name",
+        "vocabulary_id",
+        "omop_concept_id",
+    } & entity_properties.keys()
+
+    system_prompt = preset["system_prompt"].lower()
+    assert "mention extraction, not terminology normalization or coding" in system_prompt
+    assert "do not generate, recall, infer, or output snomed ct, omop" in system_prompt
+    assert "separate, versioned vocabulary lookup" in system_prompt
+    assert "copy source_text verbatim" in system_prompt
+
+    example = preset["example_prompt"].lower()
+    assert "denies chest pain" in example
+    assert "prior echocardiogram" in example
+    assert "mother had breast cancer" in example
+    assert "repeat echocardiogram tomorrow" in example
+    assert "only if the pleural effusions worsen" in example
+
+
 def test_builtin_presets_satisfy_api_models_and_field_limits():
     for preset in PRESETS:
         response_model = Preset(**preset, is_builtin=True)
@@ -139,6 +177,7 @@ def test_builtin_preset_schemas_fit_the_visual_editor():
 
 def test_only_evidence_heavy_presets_include_source_text():
     expected_source_text_presets = {
+        "snomed_omop_mapping",
         "diagnosis_extraction",
         "procedure_extraction",
         "imaging_findings",
@@ -167,6 +206,7 @@ def test_builtin_presets_build_requests_for_every_default_serving_model():
     assert {entry["name"] for entry in defaults} == {
         "medgemma-1-5-4b-vllm-endpoint",
         "qwen3-4b-vllm-endpoint",
+        "qwen3-4b-finetuned-vllm-endpoint",
         "gpt-5-4-mini",
     }
 

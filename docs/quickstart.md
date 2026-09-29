@@ -22,7 +22,7 @@ Create the `model_weights` Unity Catalog volume before running those jobs. For t
 CREATE VOLUME IF NOT EXISTS pavan_naidu_catalog.mlops.model_weights;
 ```
 
-If you override `catalog` or `schema`, create the volume in that location instead. Model download and fine-tuning jobs also require the `hf_token` secret in the `pavan_naidu` secret scope.
+If you override `catalog` or `schema`, create the volume in that location instead. MedGemma model downloads and fine-tuning require the `hf_token` secret in the `pavan_naidu` secret scope. The public Qwen3 model and NCBI Disease dataset do not require a Hugging Face token.
 
 The interactive app path does not require this volume.
 
@@ -83,7 +83,17 @@ Use this when the customer needs terminology adaptation beyond a base domain mod
 
 ```bash
 databricks bundle run finetune_medgemma --profile FEVM
+databricks bundle run finetune_qwen3_disease --profile FEVM
 ```
+
+The Qwen3 job uses a pinned revision of the public NCBI Disease Corpus on
+Hugging Face, trains a QLoRA adapter for disease mention extraction, merges
+the weights, and registers a new version of the existing
+`pavan_naidu_catalog.mlops.qwen3_vllm_structured` model under the
+`disease-finetuned` alias. The base endpoint stays pinned to version 1, while
+the job deploys the new version to `qwen3-4b-finetuned-vllm-endpoint`. The app bundle
+binds this endpoint with `CAN_QUERY`; deploy and run `clinical_extractor`
+after the model endpoint is ready to make it selectable in the UI.
 
 ## 5. Capability-to-Code Map
 

@@ -1293,6 +1293,8 @@ def _build_ai_extract_request(
     schema_json: str,
     system_prompt: str,
     precision: bool,
+    enable_citations: bool = False,
+    enable_confidence_scores: bool = False,
 ) -> tuple[str, dict, list[str]]:
     converted = _convert_json_schema_for_ai_extract(schema_json)
     instruction_parts = [
@@ -1302,8 +1304,8 @@ def _build_ai_extract_request(
     ]
     options: dict[str, object] = {
         "version": AI_EXTRACT_VERSION,
-        "enable_citations": True,
-        "enable_confidence_scores": True,
+        "enable_citations": enable_citations,
+        "enable_confidence_scores": enable_confidence_scores,
     }
     if instruction_parts:
         instructions = "\n\n".join(instruction_parts)
@@ -1772,6 +1774,13 @@ async def _run_ai_extract_inference(
             schema_json=req.json_schema,
             system_prompt=req.system_prompt,
             precision=bool(req.ai_extract_options and req.ai_extract_options.precision),
+            enable_citations=bool(
+                req.ai_extract_options and req.ai_extract_options.enable_citations
+            ),
+            enable_confidence_scores=bool(
+                req.ai_extract_options
+                and req.ai_extract_options.enable_confidence_scores
+            ),
         )
     except (json.JSONDecodeError, _AiExtractSchemaError) as exc:
         return _error_response(

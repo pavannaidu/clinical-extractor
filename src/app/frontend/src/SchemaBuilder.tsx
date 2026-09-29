@@ -775,7 +775,6 @@ export default function SchemaBuilder({
   const [parseError, setParseError] = useState("");
   const [readOnlyReason, setReadOnlyReason] = useState("");
   const [editError, setEditError] = useState("");
-  const [hasPreservedConstraints, setHasPreservedConstraints] = useState(false);
   const lastSerialized = useRef("");
   const schemaTemplate = useRef<Record<string, unknown>>({});
 
@@ -791,7 +790,6 @@ export default function SchemaBuilder({
           : ""
       );
       setReadOnlyReason(assessment.reason ?? "");
-      setHasPreservedConstraints(assessment.hasPreservedConstraints);
       setFields(
         assessment.reason || !isRecord(parsedSchema)
           ? []
@@ -805,7 +803,6 @@ export default function SchemaBuilder({
       setParseError("Could not parse the JSON schema. Use JSON mode to fix it.");
       setReadOnlyReason("");
       setEditError("");
-      setHasPreservedConstraints(false);
     }
   }, [schemaText]);
 
@@ -835,24 +832,6 @@ export default function SchemaBuilder({
 
   return (
     <div className="sb-container" aria-disabled={disabled || visualUnavailable}>
-      <div className="sb-semantics-note" role="note">
-        <strong>Required</strong> controls property presence. <strong>Nullable</strong> controls
-        whether the value type accepts <code>null</code>.
-      </div>
-      {!visualUnavailable && (
-        <DescriptionEditor
-          id="schema-root-description"
-          value={schemaDescription}
-          onChange={(description) => {
-            setSchemaDescription(description);
-            emitChange(fields, description);
-          }}
-          label="Schema description"
-          actionLabel="Schema description"
-          placeholder="Describe the overall output contract…"
-          disabled={disabled}
-        />
-      )}
       {parseError && <div className="sb-parse-error" role="alert">{parseError}</div>}
       {readOnlyReason && (
         <div className="sb-parse-error" role="alert">
@@ -861,11 +840,6 @@ export default function SchemaBuilder({
         </div>
       )}
       {editError && <div className="sb-parse-error" role="alert">{editError}</div>}
-      {!visualUnavailable && hasPreservedConstraints && (
-        <div className="sb-preserved-note" role="note">
-          Constraints not shown here are preserved unchanged. Use JSON mode to edit them.
-        </div>
-      )}
       {!visualUnavailable && (
         <>
           {fields.map((field, i) => (

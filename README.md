@@ -91,7 +91,7 @@ See [docs/architecture.md](docs/architecture.md) for the capability-to-code map.
 - **Batch pipeline**
   Prepare sample input and run either the UDF or SGC batch path.
 - **Fine-tuned extraction**
-  Fine-tune MedGemma with PEFT, then add the resulting endpoint to the app resource bindings and model selection before comparing base vs fine-tuned behavior.
+  Run `finetune_qwen3_disease` to adapt Qwen3-4B to NCBI Disease Corpus annotations, then compare its vLLM endpoint with the base Qwen endpoint in the app.
 
 ## Workspace Prerequisite for Model Jobs
 

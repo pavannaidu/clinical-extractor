@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import type {
   ExtractionCitation,
   ExtractionEvidence,
@@ -5,6 +6,10 @@ import type {
   ModelSlot,
 } from "./types";
 import FormattedView from "./FormattedView";
+import {
+  MAX_OUTPUT_TOKENS_CEILING,
+  validateOutputTokenOverride,
+} from "./outputTokens";
 
 interface Props {
   slot: ModelSlot;
@@ -82,6 +87,7 @@ function EvidenceView({
     );
   }
   const citations = new Map(evidence.citations.map((citation) => [citation.id, citation]));
+  const hasCitationEvidence = evidence.citations.length > 0;
   return (
     <div className="evidence-view">
       <div className="evidence-meta" aria-label="AI Extract evidence metadata">
@@ -113,9 +119,9 @@ function EvidenceView({
                     sourceText={sourceText}
                   />
                 ))
-              ) : (
+              ) : hasCitationEvidence ? (
                 <div className="evidence-no-citation">No source span returned.</div>
-              )}
+              ) : null}
             </article>
           );
         })}
@@ -141,6 +147,16 @@ function JsonIcon() {
   );
 }
 
+function OptionalSettingsIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path d="M4 2v12M12 2v12M2 5h4M10 11h4" />
+      <circle cx="4" cy="5" r="1.75" />
+      <circle cx="12" cy="11" r="1.75" />
+    </svg>
+  );
+}
+
 export default function ModelResultColumn({
   slot,
   models,
@@ -152,6 +168,9 @@ export default function ModelResultColumn({
   canRemove,
 }: Props) {
   const { result, error, notice, activeTab, copied, loading } = slot;
+  const [showOptionalSettings, setShowOptionalSettings] = useState(false);
+  const optionalSettingsRef = useRef<HTMLDivElement>(null);
+  const optionalSettingsButtonRef = useRef<HTMLButtonElement>(null);
   const customModels = models.filter((model) => model.model_type === "custom");
   const fmapiModels = models.filter((model) => model.model_type === "fmapi");
   const aiExtractModels = models.filter((model) => model.model_type === "ai_extract");
@@ -159,6 +178,33 @@ export default function ModelResultColumn({
   const selectedDisplayName = displayModelName(selectedModelInfo, slot.selectedModel);
   const selectedCustomModel = selectedModelInfo?.model_type === "custom";
   const selectedAiExtract = selectedModelInfo?.model_type === "ai_extract";
+  const selectedServingModel = Boolean(selectedModelInfo && !selectedAiExtract);
+  const enabledAiExtractOptionCount = [
+    slot.aiExtractPrecision,
+    slot.aiExtractCitations,
+    slot.aiExtractConfidenceScores,
+  ].filter(Boolean).length;
+  const outputTokenOverrideValidation = validateOutputTokenOverride(
+    slot.maxOutputTokensOverride
+  );
+  const hasOutputTokenOverride =
+    selectedServingModel && slot.maxOutputTokensOverride.trim().length > 0;
+  const hasOptionalSettingsConfigured = selectedAiExtract
+    ? enabledAiExtractOptionCount > 0
+    : hasOutputTokenOverride;
+  const optionalSettingsLabel = selectedAiExtract
+    ? `AI Extract optional settings${
+        enabledAiExtractOptionCount > 0
+          ? `, ${enabledAiExtractOptionCount} enabled`
+          : ""
+      }`
+    : `Optional settings for ${selectedDisplayName}${
+        outputTokenOverrideValidation.error
+          ? ", output limit is invalid"
+          : hasOutputTokenOverride
+            ? ", output limit override set"
+            : ""
+      }`;
   const selectedServingRuntime = selectedModelInfo?.serving_runtime ?? null;
   const selectedModelUnavailable = Boolean(
     selectedModelInfo && selectedModelInfo.availability_status !== "ready"
@@ -219,13 +265,53 @@ export default function ModelResultColumn({
   const rawTabId = `${slot.id}-raw-tab`;
   const evidenceTabId = `${slot.id}-evidence-tab`;
   const resultPanelId = `${slot.id}-result-panel`;
-  const showEvidenceTab = result?.runtime === "ai_extract";
+  const hasConfidenceEvidence = Boolean(
+    result?.evidence?.fields.some(
+      (field) => typeof field.confidence_score === "number"
+    )
+  );
+  const hasCitationEvidence = Boolean(
+    result?.evidence?.fields.some((field) => field.citation_ids.length > 0)
+  );
+  const showEvidenceTab = Boolean(
+    result?.runtime === "ai_extract" &&
+      (hasConfidenceEvidence || hasCitationEvidence)
+  );
   const activeTabId =
     activeTab === "formatted"
       ? formattedTabId
       : activeTab === "evidence"
         ? evidenceTabId
         : rawTabId;
+
+  useEffect(() => {
+    setShowOptionalSettings(false);
+  }, [slot.selectedModel]);
+
+  useEffect(() => {
+    if (!showOptionalSettings) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (
+        optionalSettingsRef.current &&
+        !optionalSettingsRef.current.contains(event.target as Node)
+      ) {
+        setShowOptionalSettings(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setShowOptionalSettings(false);
+      optionalSettingsButtonRef.current?.focus();
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [showOptionalSettings]);
 
   return (
     <section
@@ -273,6 +359,187 @@ export default function ModelResultColumn({
             </optgroup>
           )}
         </select>
+        {selectedModelInfo && (
+          <div className="model-optional-settings" ref={optionalSettingsRef}>
+            <button
+              ref={optionalSettingsButtonRef}
+              type="button"
+              className={`model-options-button ${showOptionalSettings ? "is-open" : ""} ${
+                hasOptionalSettingsConfigured ? "is-configured" : ""
+              } ${
+                outputTokenOverrideValidation.error ? "has-error" : ""
+              }`}
+              aria-label={optionalSettingsLabel}
+              aria-expanded={showOptionalSettings}
+              aria-controls={`${slot.id}-optional-settings`}
+              title="Optional settings"
+              onClick={() => setShowOptionalSettings((current) => !current)}
+              disabled={loading || selectedModelUnavailable}
+            >
+              <OptionalSettingsIcon />
+              {hasOptionalSettingsConfigured && (
+                <span className="model-options-indicator" aria-hidden="true" />
+              )}
+            </button>
+            {showOptionalSettings && (
+              <div
+                id={`${slot.id}-optional-settings`}
+                className="model-options-popover"
+                role="dialog"
+                aria-label={`Optional settings for ${selectedDisplayName}`}
+              >
+                {selectedAiExtract ? (
+                  <fieldset
+                    className="ai-extract-options"
+                    disabled={loading || selectedModelUnavailable}
+                  >
+                    <legend className="sr-only">AI Extract optional settings</legend>
+                    <label className="ai-extract-option-row">
+                      <span className="ai-extract-option-copy">
+                        <span
+                          className="ai-extract-option-title"
+                          id={`${slot.id}-precision-label`}
+                        >
+                          Precision mode
+                        </span>
+                        <span
+                          className="ai-extract-option-description"
+                          id={`${slot.id}-precision-description`}
+                        >
+                          Higher accuracy for nuanced fields and long documents
+                        </span>
+                      </span>
+                      <input
+                        className="ai-extract-option-switch"
+                        type="checkbox"
+                        role="switch"
+                        checked={slot.aiExtractPrecision}
+                        onChange={(event) =>
+                          onUpdateSlot({ aiExtractPrecision: event.target.checked })
+                        }
+                        aria-labelledby={`${slot.id}-precision-label`}
+                        aria-describedby={`${slot.id}-precision-description`}
+                      />
+                    </label>
+                    <label className="ai-extract-option-row">
+                      <span className="ai-extract-option-copy">
+                        <span
+                          className="ai-extract-option-title"
+                          id={`${slot.id}-citations-label`}
+                        >
+                          Citations
+                        </span>
+                        <span
+                          className="ai-extract-option-description"
+                          id={`${slot.id}-citations-description`}
+                        >
+                          Show source references for extracted values
+                        </span>
+                      </span>
+                      <input
+                        className="ai-extract-option-switch"
+                        type="checkbox"
+                        role="switch"
+                        checked={slot.aiExtractCitations}
+                        onChange={(event) =>
+                          onUpdateSlot({ aiExtractCitations: event.target.checked })
+                        }
+                        aria-labelledby={`${slot.id}-citations-label`}
+                        aria-describedby={`${slot.id}-citations-description`}
+                      />
+                    </label>
+                    <label className="ai-extract-option-row">
+                      <span className="ai-extract-option-copy">
+                        <span
+                          className="ai-extract-option-title"
+                          id={`${slot.id}-confidence-label`}
+                        >
+                          Confidence scores
+                        </span>
+                        <span
+                          className="ai-extract-option-description"
+                          id={`${slot.id}-confidence-description`}
+                        >
+                          Show confidence levels for extracted values
+                        </span>
+                      </span>
+                      <input
+                        className="ai-extract-option-switch"
+                        type="checkbox"
+                        role="switch"
+                        checked={slot.aiExtractConfidenceScores}
+                        onChange={(event) =>
+                          onUpdateSlot({
+                            aiExtractConfidenceScores: event.target.checked,
+                          })
+                        }
+                        aria-labelledby={`${slot.id}-confidence-label`}
+                        aria-describedby={`${slot.id}-confidence-description`}
+                      />
+                    </label>
+                  </fieldset>
+                ) : (
+                  <fieldset
+                    className="serving-model-options"
+                    disabled={loading || selectedModelUnavailable}
+                  >
+                    <legend className="sr-only">Serving model optional settings</legend>
+                    <label
+                      className="serving-model-option-label"
+                      htmlFor={`${slot.id}-max-output-tokens`}
+                    >
+                      Output limit
+                    </label>
+                    <input
+                      id={`${slot.id}-max-output-tokens`}
+                      name={`${slot.id}-max-output-tokens`}
+                      className="serving-model-option-input"
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      max={MAX_OUTPUT_TOKENS_CEILING}
+                      step={1}
+                      value={slot.maxOutputTokensOverride}
+                      placeholder="Model default"
+                      onChange={(event) =>
+                        onUpdateSlot({ maxOutputTokensOverride: event.target.value })
+                      }
+                      aria-invalid={Boolean(outputTokenOverrideValidation.error)}
+                      aria-describedby={`${slot.id}-max-output-tokens-hint${
+                        outputTokenOverrideValidation.error
+                          ? ` ${slot.id}-max-output-tokens-error`
+                          : ""
+                      }`}
+                      aria-errormessage={
+                        outputTokenOverrideValidation.error
+                          ? `${slot.id}-max-output-tokens-error`
+                          : undefined
+                      }
+                    />
+                    <span
+                      className="serving-model-option-hint"
+                      id={`${slot.id}-max-output-tokens-hint`}
+                    >
+                      Blank uses this model&apos;s configured default
+                      {selectedModelInfo.max_tokens != null
+                        ? ` (${selectedModelInfo.max_tokens.toLocaleString()})`
+                        : ""}
+                      . Allowed range: 1–{MAX_OUTPUT_TOKENS_CEILING.toLocaleString()} tokens.
+                    </span>
+                    {outputTokenOverrideValidation.error && (
+                      <span
+                        className="serving-model-option-error"
+                        id={`${slot.id}-max-output-tokens-error`}
+                      >
+                        {outputTokenOverrideValidation.error}
+                      </span>
+                    )}
+                  </fieldset>
+                )}
+              </div>
+            )}
+          </div>
+        )}
         {canRemove && (
           <button
             className="btn-remove-slot"
@@ -283,6 +550,13 @@ export default function ModelResultColumn({
           </button>
         )}
       </div>
+      {selectedServingModel &&
+        outputTokenOverrideValidation.error &&
+        !showOptionalSettings && (
+          <div className="model-settings-validation" role="alert">
+            Output limit: {outputTokenOverrideValidation.error}
+          </div>
+        )}
       {showModelStatusRow && (
         <div className="model-status-row">
           <div className="model-status-helper">
@@ -290,7 +564,7 @@ export default function ModelResultColumn({
               <div className="model-status-summary">
                 <span className="model-status-pill is-ai-extract">AI Extract 2.1</span>
                 <span className="model-status-label">
-                  Managed extraction with confidence and source evidence
+                  Managed extraction with optional precision and evidence
                 </span>
               </div>
             )}
@@ -314,19 +588,6 @@ export default function ModelResultColumn({
               </div>
             )}
           </div>
-          {selectedAiExtract && (
-            <label className="ai-extract-precision-toggle">
-              <input
-                type="checkbox"
-                checked={slot.aiExtractPrecision}
-                onChange={(event) =>
-                  onUpdateSlot({ aiExtractPrecision: event.target.checked })
-                }
-                disabled={loading}
-              />
-              Precision
-            </label>
-          )}
           {selectedModelUnavailable && (
             <button
               type="button"
@@ -494,8 +755,17 @@ export default function ModelResultColumn({
               )}
               {slot.outputTokenLimit != null && (
                 <div className="latency-note">
-                  The app sends this as <code>max_tokens</code>. The endpoint may enforce a lower
-                  provider or model ceiling.
+                  {slot.outputTokenLimitSource === "override" ? (
+                    <>
+                      The app sends this request-specific cap as <code>max_tokens</code>. The
+                      endpoint may enforce a lower provider or model ceiling.
+                    </>
+                  ) : (
+                    <>
+                      This is the model&apos;s configured default output cap. The endpoint may
+                      enforce a lower provider or model ceiling.
+                    </>
+                  )}
                 </div>
               )}
             </div>

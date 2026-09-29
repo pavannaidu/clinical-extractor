@@ -667,4 +667,93 @@ PRESETS = [
             "Preserve the requested service, diagnosis, stated code, completed conservative therapy, supporting rationale, and urgency; leave unstated coding details null.",
         ),
     ),
+    _preset(
+        "disease_mention_extraction",
+        "Disease Mention Extraction",
+        "Extract verbatim disease mentions from biomedical research text (NCBI Disease Corpus format).",
+        _object(
+            {
+                "diseases": _array(
+                    _object(
+                        {
+                            "mention": _string(),
+                            "category": _string(
+                                enum=["disease", "syndrome", "complication", "comorbidity", "symptom", "risk_factor"]
+                            ),
+                            "negated": _boolean(),
+                            "body_system": _string(nullable=True),
+                        }
+                    )
+                ),
+            }
+        ),
+        "BACKGROUND: Sickle cell disease is an inherited hemoglobinopathy characterized by chronic hemolytic anemia, vaso-occlusive crises, and progressive end-organ damage including pulmonary hypertension, chronic kidney disease, and retinopathy. Hydroxyurea remains the mainstay of disease-modifying therapy, yet many patients continue to experience acute chest syndrome, stroke, and avascular necrosis of the femoral head. Recent advances in gene therapy targeting BCL11A have shown promise in transfusion-dependent beta-thalassemia and sickle cell anemia, but long-term safety data regarding myelodysplastic syndrome and secondary malignancy risk remain limited. METHODS: We conducted a multicenter retrospective cohort study of 2,847 patients with sickle cell disease across 14 centers to evaluate the incidence of silent cerebral infarcts, nephrotic syndrome, and leg ulcers in relation to hydroxyurea adherence. Patients with coexisting glucose-6-phosphate dehydrogenase deficiency were excluded due to confounding hemolysis risk. RESULTS: Over a median follow-up of 6.2 years, 34% of patients developed at least one vaso-occlusive crisis requiring hospitalization, 12% experienced acute chest syndrome, and 8% had radiographic evidence of silent cerebral infarcts. Pulmonary hypertension was identified in 18% of screened patients and was independently associated with chronic kidney disease (OR 2.4, 95% CI 1.8-3.1) and retinopathy (OR 1.9, 95% CI 1.4-2.6). Hydroxyurea adherence above 80% was associated with reduced incidence of stroke (HR 0.42, 95% CI 0.28-0.63) and acute chest syndrome (HR 0.51, 95% CI 0.38-0.69). CONCLUSIONS: Sickle cell disease confers substantial multi-organ morbidity. While hydroxyurea reduces vaso-occlusive complications, the burden of pulmonary hypertension, chronic kidney disease, and silent cerebral infarcts remains high. Emerging gene therapies may address the underlying hemoglobinopathy but require vigilance for myelodysplastic syndrome.",
+        _system_prompt(
+            "structured disease mentions",
+            "For each mention provide the verbatim text, classify it as disease, syndrome, complication, comorbidity, symptom, or risk_factor, indicate whether it is negated in context, and note the affected body system when stated or clearly implied. Preserve order of first appearance and use only text from the source.",
+        ),
+    ),
+    # Keep the legacy ID so Lakebase upserts the existing built-in instead of
+    # leaving a stale SNOMED-mapping preset alongside the evidence-only version.
+    _preset(
+        "snomed_omop_mapping",
+        "Clinical Concept Extraction",
+        "Extract source-grounded clinical concept mentions with assertion, timing, and experiencer context.",
+        _object(
+            {
+                "entities": _array(
+                    _object(
+                        {
+                            "source_text": _string(),
+                            "entity_type": _string(
+                                enum=[
+                                    "condition",
+                                    "symptom_or_sign",
+                                    "procedure",
+                                    "medication",
+                                    "test",
+                                    "measurement",
+                                    "observation",
+                                ]
+                            ),
+                            "assertion": _string(
+                                enum=["present", "absent", "possible", "conditional", "hypothetical"]
+                            ),
+                            "temporality": _string(
+                                enum=["current", "historical", "planned", "future", "unknown"]
+                            ),
+                            "experiencer": _string(
+                                enum=["patient", "family_member", "other", "unknown"]
+                            ),
+                            "body_site": _string(nullable=True),
+                            "laterality": _string(
+                                nullable=True,
+                                enum=["left", "right", "bilateral", "midline"],
+                            ),
+                        }
+                    )
+                ),
+            }
+        ),
+        "Emergency department note: A 67-year-old man reports 3 days of dyspnea, productive cough, and fever. He denies chest pain or hemoptysis. Chest CT shows right lower-lobe consolidation and small bilateral pleural effusions, with no pneumothorax. A prior echocardiogram from 2024 showed LVEF 35%. Assessment: community-acquired PNA, acute-on-chronic systolic heart failure, and new-onset atrial fibrillation. His mother had breast cancer; the patient has no known history of malignancy. Start ceftriaxone 1 g IV daily and furosemide 40 mg IV twice daily; continue apixaban 5 mg twice daily. Repeat echocardiogram tomorrow. Consider thoracentesis only if the pleural effusions worsen.",
+        (
+            "You extract clinical concept mentions explicitly supported by clinical source text and return "
+            "one valid JSON object that matches the requested schema exactly. This is mention extraction, "
+            "not terminology normalization or coding. For every clinically meaningful condition, symptom "
+            "or sign, procedure, medication, test, measurement, or observation, copy source_text verbatim "
+            "using the smallest sufficient contiguous span and preserve order of first appearance. Classify "
+            "the mention's entity_type, assertion, temporality, and experiencer only from its local context. "
+            "Absent means explicitly negated; possible means uncertain or suspected; conditional means it "
+            "applies only under a stated condition; hypothetical means a risk or scenario that is not asserted "
+            "to have occurred. Do not treat historical, planned, future, family-member, negated, uncertain, or "
+            "conditional mentions as current patient facts. Record body_site and laterality only when the source "
+            "supports them; otherwise use null. Do not infer a diagnosis from a medication, test, demographic, "
+            "or general medical knowledge. Preserve abbreviations exactly in source_text; use surrounding text "
+            "to classify one only when its meaning is unambiguous, and otherwise preserve the ambiguity. Do not "
+            "generate, recall, infer, or output SNOMED CT, OMOP, ICD, LOINC, RxNorm, CPT, or other terminology "
+            "identifiers or preferred terms. Terminology linking requires a separate, versioned vocabulary "
+            "lookup and is intentionally outside this extraction task. Do not invent facts or resolve ambiguity "
+            "silently. Use an empty entities array when the source contains no supported clinical mentions."
+        ),
+    ),
 ]

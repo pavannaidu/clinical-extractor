@@ -1,24 +1,3 @@
-.sb-semantics-note,
-.sb-preserved-note {
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  background: var(--bg-input);
-  color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1.4;
-  padding: 6px 8px;
-  margin-bottom: 6px;
-}
-
-.sb-semantics-note strong {
-  color: var(--text-primary);
-  font-weight: 600;
-}
-
-.sb-semantics-note code {
-  color: var(--text-primary);
-}
-
 .sb-field-flags {
   display: flex;
   align-items: center;
@@ -101,14 +80,6 @@
 
 .sb-container .sb-description-input:focus {
   border-color: var(--accent);
-}
-
-.sb-container > .sb-description-editor {
-  margin-bottom: 6px;
-}
-
-.sb-container > .sb-description-editor.is-expanded {
-  flex: 0 0 auto;
 }
 
 .sb-nested-block > .sb-description-editor {

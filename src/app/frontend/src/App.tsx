@@ -4,10 +4,11 @@ import {
   useState,
   useEffect,
   useCallback,
-  useId,
   useMemo,
   useRef,
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import Editor from "@monaco-editor/react";
 import {
@@ -49,26 +50,25 @@ import PresetManager from "./PresetManager";
 import ModelSettingsManager from "./ModelSettingsManager";
 import HelpDrawer from "./HelpDrawer";
 import ModelResultColumn from "./ModelResultColumn";
+import { validateOutputTokenOverride } from "./outputTokens";
 
 const LoadTestCharts = lazy(() => import("./LoadTestCharts"));
 
 let slotCounter = 0;
 const LEFT_PANE_MODE_KEY = "clinical-extractor:left-pane-mode";
+const LEFT_PANE_WIDTH_KEY = "clinical-extractor:left-pane-width";
 const ACTIVE_VIEW_KEY = "clinical-extractor:active-view";
 const SYSTEM_PROMPT_KEY = "clinical-extractor:system-prompt";
-const SYSTEM_PROMPT_VISIBILITY_KEY = "clinical-extractor:show-system-prompt";
-const MAX_OUTPUT_TOKENS_KEY = "clinical-extractor:max-output-tokens";
 const ACTIVE_LOAD_TEST_RUN_KEY = "clinical-extractor:active-load-test-run";
 const SYSTEM_PROMPT_MAX_LENGTH = 4000;
 const MEDICAL_TEXT_MAX_LENGTH = 10000;
+const DEFAULT_LEFT_PANE_WIDTH = 430;
+const MIN_LEFT_PANE_WIDTH = 320;
+const MAX_LEFT_PANE_WIDTH = 900;
 const DEFAULT_SCHEMA = `{
   "type": "object",
   "properties": {}
 }`;
-// Upper bound the app allows for a per-request output cap. Must not exceed the
-// serving endpoint's max_model_len. Empty override falls back to the
-// per-endpoint default configured in models.json.
-const MAX_OUTPUT_TOKENS_CEILING = 8192;
 const DEFAULT_SYSTEM_PROMPT =
   "You are a clinical information extraction assistant. Extract only information explicitly supported by the provided medical text. Return output that matches the requested schema exactly. Do not invent facts; when the source text does not provide a value, leave it null or empty if the schema allows.";
 const MODEL_UNAVAILABLE_MESSAGE =
@@ -98,8 +98,16 @@ function makeSlotId() {
   return `slot-${++slotCounter}`;
 }
 
-type LeftPaneMode = "collapsed" | "normal" | "wide";
+type LeftPaneMode = "collapsed" | "normal";
 type AppView = "structured-output" | "load-testing";
+
+function clampLeftPaneWidth(width: number): number {
+  const viewportMaximum =
+    typeof window === "undefined"
+      ? MAX_LEFT_PANE_WIDTH
+      : Math.max(MIN_LEFT_PANE_WIDTH, window.innerWidth - 420);
+  return Math.min(MAX_LEFT_PANE_WIDTH, viewportMaximum, Math.max(MIN_LEFT_PANE_WIDTH, width));
+}
 
 const APP_VIEW_OPTIONS: Array<{
   id: AppView;
@@ -176,6 +184,37 @@ function SettingsIcon() {
       <circle cx="7" cy="4.25" r="1.25" fill="none" stroke="currentColor" strokeWidth="1.35" />
       <circle cx="10.5" cy="8" r="1.25" fill="none" stroke="currentColor" strokeWidth="1.35" />
       <circle cx="5.5" cy="11.75" r="1.25" fill="none" stroke="currentColor" strokeWidth="1.35" />
+    </svg>
+  );
+}
+
+function GearIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+      <path
+        d="M8.4 2.35h3.2l.48 1.86c.42.16.82.39 1.18.68l1.85-.54 1.6 2.77-1.38 1.33c.03.22.05.45.05.68s-.02.46-.05.68l1.38 1.33-1.6 2.77-1.85-.54c-.36.29-.76.52-1.18.68l-.48 1.86H8.4l-.48-1.86a5.78 5.78 0 0 1-1.18-.68l-1.85.54-1.6-2.77 1.38-1.33a4.73 4.73 0 0 1 0-1.36L3.29 7.12l1.6-2.77 1.85.54c.36-.29.76-.52 1.18-.68L8.4 2.35Z"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.45"
+      />
+      <circle cx="10" cy="9.13" r="2.35" fill="none" stroke="currentColor" strokeWidth="1.45" />
+    </svg>
+  );
+}
+
+function DrawerChevron({ expanded }: { expanded: boolean }) {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path
+        d={expanded ? "M3.5 6.25 8 10l4.5-3.75" : "M6.25 3.5 10 8l-3.75 4.5"}
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.75"
+      />
     </svg>
   );
 }
@@ -1273,6 +1312,9 @@ function makeSlot(selectedModel: string): ModelSlot {
     notice: null,
     activeTab: "formatted",
     aiExtractPrecision: false,
+    aiExtractCitations: false,
+    aiExtractConfidenceScores: false,
+    maxOutputTokensOverride: "",
     copied: false,
     outputTokenLimit: null,
     outputTokenLimitSource: null,
@@ -1316,6 +1358,9 @@ function reconcileSlotsWithModels(prevSlots: ModelSlot[], nextModels: ModelInfo[
         notice: null,
         activeTab: "formatted",
         aiExtractPrecision: false,
+        aiExtractCitations: false,
+        aiExtractConfidenceScores: false,
+        maxOutputTokensOverride: "",
         copied: false,
         outputTokenLimit: null,
         outputTokenLimitSource: null,
@@ -1379,26 +1424,14 @@ function App() {
     }
     return DEFAULT_SYSTEM_PROMPT;
   });
-  const [showSystemPrompt, setShowSystemPrompt] = useState(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem(SYSTEM_PROMPT_VISIBILITY_KEY) === "true";
-    }
-    return false;
-  });
-  // Empty string = use the per-endpoint default max_tokens from the backend.
-  const [maxOutputTokens, setMaxOutputTokens] = useState(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem(MAX_OUTPUT_TOKENS_KEY) || "";
-    }
-    return "";
-  });
+  const [showSystemPrompt, setShowSystemPrompt] = useState(false);
+  const [showInput, setShowInput] = useState(false);
   const [schemaMode, setSchemaMode] = useState<"visual" | "json">("visual");
   const [schemaModeError, setSchemaModeError] = useState("");
   const [schemaError, setSchemaError] = useState("");
-  const [schemaFocused, setSchemaFocused] = useState(false);
-  const schemaFocusTitleId = useId();
-  const schemaFocusRef = useRef<HTMLElement>(null);
-  const schemaFocusButtonRef = useRef<HTMLButtonElement>(null);
+  const [configurationFocused, setConfigurationFocused] = useState(false);
+  const configurationFocusRef = useRef<HTMLDivElement>(null);
+  const configurationFocusButtonRef = useRef<HTMLButtonElement>(null);
   const [showPresetManager, setShowPresetManager] = useState(false);
   const [showModelSettings, setShowModelSettings] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -1409,12 +1442,23 @@ function App() {
   const [leftPaneMode, setLeftPaneMode] = useState<LeftPaneMode>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem(LEFT_PANE_MODE_KEY);
-      if (saved === "collapsed" || saved === "normal" || saved === "wide") {
-        return saved;
+      if (saved === "collapsed") {
+        return "collapsed";
       }
     }
     return "normal";
   });
+  const [leftPaneWidth, setLeftPaneWidth] = useState(() => {
+    if (typeof window !== "undefined") {
+      const storedWidth = localStorage.getItem(LEFT_PANE_WIDTH_KEY);
+      const saved = storedWidth == null ? Number.NaN : Number(storedWidth);
+      if (Number.isFinite(saved) && saved > 0) {
+        return Math.min(MAX_LEFT_PANE_WIDTH, Math.max(MIN_LEFT_PANE_WIDTH, saved));
+      }
+    }
+    return DEFAULT_LEFT_PANE_WIDTH;
+  });
+  const paneResizeStartRef = useRef<{ x: number; width: number } | null>(null);
 
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     if (typeof window !== "undefined") {
@@ -1525,16 +1569,12 @@ function App() {
   }, [leftPaneMode]);
 
   useEffect(() => {
+    localStorage.setItem(LEFT_PANE_WIDTH_KEY, String(leftPaneWidth));
+  }, [leftPaneWidth]);
+
+  useEffect(() => {
     localStorage.setItem(SYSTEM_PROMPT_KEY, systemPrompt);
   }, [systemPrompt]);
-
-  useEffect(() => {
-    localStorage.setItem(SYSTEM_PROMPT_VISIBILITY_KEY, String(showSystemPrompt));
-  }, [showSystemPrompt]);
-
-  useEffect(() => {
-    localStorage.setItem(MAX_OUTPUT_TOKENS_KEY, maxOutputTokens);
-  }, [maxOutputTokens]);
 
   useEffect(() => {
     if (activeView !== "structured-output" && showPresetManager) {
@@ -1543,31 +1583,31 @@ function App() {
   }, [activeView, showPresetManager]);
 
   useEffect(() => {
-    if (activeView !== "structured-output" && schemaFocused) {
-      setSchemaFocused(false);
+    if (activeView !== "structured-output" && configurationFocused) {
+      setConfigurationFocused(false);
     }
-  }, [activeView, schemaFocused]);
+  }, [activeView, configurationFocused]);
 
   useEffect(() => {
-    if (!schemaFocused) return;
+    if (!configurationFocused) return;
 
     const previousBodyOverflow = document.body.style.overflow;
     const focusFrame = window.requestAnimationFrame(() => {
-      schemaFocusButtonRef.current?.focus();
+      configurationFocusButtonRef.current?.focus();
     });
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setSchemaFocused(false);
+      if (event.key === "Escape") setConfigurationFocused(false);
     };
 
     document.body.style.overflow = "hidden";
-    document.addEventListener("keydown", handleEscape);
+    document.addEventListener("keydown", handleEscape, true);
     return () => {
       window.cancelAnimationFrame(focusFrame);
       document.body.style.overflow = previousBodyOverflow;
-      document.removeEventListener("keydown", handleEscape);
-      schemaFocusButtonRef.current?.focus();
+      document.removeEventListener("keydown", handleEscape, true);
+      configurationFocusButtonRef.current?.focus();
     };
-  }, [schemaFocused]);
+  }, [configurationFocused]);
 
   const refreshModels = useCallback(async () => {
     setModelsLoading(true);
@@ -2040,19 +2080,17 @@ function App() {
   const handleSubmit = async () => {
     if (!validateSchema()) return;
 
-    // Resolve the optional per-request output cap. Empty = use the endpoint
-    // default; a value must be a positive integer within the allowed ceiling.
-    let maxOutputTokensOverride: number | null = null;
-    const maxOutputTokensText = maxOutputTokens.trim();
-    if (maxOutputTokensText.length > 0) {
-      const parsed = parseIntegerInput(maxOutputTokensText);
-      if (parsed == null || parsed < 1 || parsed > MAX_OUTPUT_TOKENS_CEILING) {
-        setSchemaError(
-          `Max output tokens must be between 1 and ${MAX_OUTPUT_TOKENS_CEILING}, or left blank for the model default.`
-        );
+    const modelsByName = new Map(models.map((model) => [model.name, model]));
+    for (const slot of slots) {
+      const selectedModelInfo = modelsByName.get(slot.selectedModel);
+      if (selectedModelInfo?.model_type === "ai_extract") {
+        continue;
+      }
+
+      const validation = validateOutputTokenOverride(slot.maxOutputTokensOverride);
+      if (validation.error) {
         return;
       }
-      maxOutputTokensOverride = parsed;
     }
 
     // Surface progress immediately while the endpoint list is refreshed. Without
@@ -2100,6 +2138,9 @@ function App() {
     setSlots(
       currentSlots.map((slot) => {
         const selectedModelInfo = latestModelsByName.get(slot.selectedModel);
+        const maxOutputTokensOverride = validateOutputTokenOverride(
+          slot.maxOutputTokensOverride
+        ).value;
         const isUnavailableModel =
           !selectedModelInfo || selectedModelInfo.availability_status !== "ready";
 
@@ -2148,6 +2189,9 @@ function App() {
     await Promise.allSettled(
       runnableSlots.map(async (slot) => {
         const selectedModelInfo = latestModelsByName.get(slot.selectedModel);
+        const maxOutputTokensOverride = validateOutputTokenOverride(
+          slot.maxOutputTokensOverride
+        ).value;
         try {
           const res = await runInference({
             prompt,
@@ -2160,7 +2204,11 @@ function App() {
                 : "model_serving",
             ai_extract_options:
               selectedModelInfo?.model_type === "ai_extract"
-                ? { precision: slot.aiExtractPrecision }
+                ? {
+                    precision: slot.aiExtractPrecision,
+                    enable_citations: slot.aiExtractCitations,
+                    enable_confidence_scores: slot.aiExtractConfidenceScores,
+                  }
                 : null,
             max_tokens:
               selectedModelInfo?.model_type === "ai_extract"
@@ -2281,10 +2329,10 @@ function App() {
     setSlots((prev) => (prev.length <= 1 ? prev : prev.filter((s) => s.id !== id)));
   };
 
-  const handleSchemaFocusKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
-    if (!schemaFocused || event.key !== "Tab") return;
+  const handleConfigurationFocusKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (!configurationFocused || event.key !== "Tab") return;
     const focusable = Array.from(
-      schemaFocusRef.current?.querySelectorAll<HTMLElement>(
+      configurationFocusRef.current?.querySelectorAll<HTMLElement>(
         'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
       ) ?? []
     ).filter((element) => element.getClientRects().length > 0);
@@ -2300,6 +2348,35 @@ function App() {
     }
   };
 
+  const handlePaneResizePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    paneResizeStartRef.current = { x: event.clientX, width: leftPaneWidth };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handlePaneResizePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const start = paneResizeStartRef.current;
+    if (!start) return;
+    setLeftPaneWidth(clampLeftPaneWidth(start.width + event.clientX - start.x));
+  };
+
+  const handlePaneResizeEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
+    paneResizeStartRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+
+  const handlePaneResizeKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    let nextWidth: number | null = null;
+    if (event.key === "ArrowLeft") nextWidth = leftPaneWidth - 24;
+    if (event.key === "ArrowRight") nextWidth = leftPaneWidth + 24;
+    if (event.key === "Home") nextWidth = MIN_LEFT_PANE_WIDTH;
+    if (event.key === "End") nextWidth = MAX_LEFT_PANE_WIDTH;
+    if (nextWidth == null) return;
+    event.preventDefault();
+    setLeftPaneWidth(clampLeftPaneWidth(nextWidth));
+  };
+
   const promptLen = prompt.length;
   const systemPromptLen = systemPrompt.length;
   const systemPromptDefault =
@@ -2309,243 +2386,261 @@ function App() {
     loadTestForm.targetItpm.trim() !== String(DEFAULT_REFERENCE_ITPM) ||
     loadTestForm.targetOtpm.trim() !== String(DEFAULT_REFERENCE_OTPM);
   const paneToggle = (
-    <div className="pane-toggle" role="group" aria-label="Left pane size">
-      <div className="pane-toggle-group">
-        <button
-          className={`pane-toggle-btn ${leftPaneMode === "collapsed" ? "active" : ""}`}
-          onClick={() => setLeftPaneMode("collapsed")}
-          aria-pressed={leftPaneMode === "collapsed"}
-        >
-          Hide
-        </button>
-        <button
-          className={`pane-toggle-btn ${leftPaneMode === "normal" ? "active" : ""}`}
-          onClick={() => setLeftPaneMode("normal")}
-          aria-pressed={leftPaneMode === "normal"}
-        >
-          Edit
-        </button>
-        <button
-          className={`pane-toggle-btn ${leftPaneMode === "wide" ? "active" : ""}`}
-          onClick={() => setLeftPaneMode("wide")}
-          aria-pressed={leftPaneMode === "wide"}
-        >
-          Wide
-        </button>
-      </div>
-    </div>
+    <button
+      type="button"
+      className={`configuration-toggle ${leftPaneMode !== "collapsed" ? "active" : ""}`}
+      onClick={() =>
+        setLeftPaneMode((current) => (current === "collapsed" ? "normal" : "collapsed"))
+      }
+      aria-pressed={leftPaneMode !== "collapsed"}
+      aria-controls="configuration-panel"
+      aria-label={leftPaneMode === "collapsed" ? "Open configuration panel" : "Close configuration panel"}
+      title={leftPaneMode === "collapsed" ? "Open configuration" : "Close configuration"}
+    >
+      <GearIcon />
+    </button>
   );
 
   const structuredOutputView = (
     <main
       id="main-workspace"
       className={`main pane-${leftPaneMode}`}
+      style={{ "--open-left-pane-width": `${leftPaneWidth}px` } as CSSProperties}
       aria-busy={anyLoading}
     >
-      <div className={`panel panel-left ${leftPaneMode === "collapsed" ? "is-collapsed" : ""}`}>
-        <section
-          ref={schemaFocusRef}
-          className={`schema-workspace ${schemaFocused ? "is-focused" : ""}`}
-          role={schemaFocused ? "dialog" : undefined}
-          aria-modal={schemaFocused ? "true" : undefined}
-          aria-labelledby={schemaFocusTitleId}
-          onKeyDown={handleSchemaFocusKeyDown}
-        >
-        <div className="schema-header">
-          <div className="section-heading-copy">
-            <span className="section-kicker">1 · Output contract</span>
-            <h2 id={schemaFocusTitleId}>Define the schema</h2>
-            <p>Required controls property presence; Nullable allows a field value to be null.</p>
+      <div
+        id="configuration-panel"
+        ref={configurationFocusRef}
+        className={`panel panel-left ${leftPaneMode === "collapsed" ? "is-collapsed" : ""} ${
+          configurationFocused ? "is-focused" : ""
+        }`}
+        role={configurationFocused ? "dialog" : undefined}
+        aria-modal={configurationFocused ? "true" : undefined}
+        aria-labelledby={configurationFocused ? "configuration-panel-title" : undefined}
+        aria-hidden={leftPaneMode === "collapsed" && !configurationFocused}
+        onKeyDown={handleConfigurationFocusKeyDown}
+      >
+        <div className="configuration-header">
+          <div className="configuration-heading">
+            <h2 id="configuration-panel-title">Configuration</h2>
           </div>
-          <div className="schema-header-actions">
-            <div className="schema-mode-toggle" role="group" aria-label="Schema editor mode">
-              <button
-                id="schema-tab-visual"
-                className={`tab ${schemaMode === "visual" ? "active" : ""}`}
-                aria-pressed={schemaMode === "visual"}
-                disabled={anyLoading}
-                onClick={() => {
-                  try {
-                    JSON.parse(schemaText);
-                    setSchemaModeError("");
-                    setSchemaMode("visual");
-                  } catch {
-                    setSchemaModeError("Fix JSON errors before switching to Visual mode");
-                  }
-                }}
-              >
-                Visual
-              </button>
-              <button
-                id="schema-tab-json"
-                className={`tab ${schemaMode === "json" ? "active" : ""}`}
-                aria-pressed={schemaMode === "json"}
-                disabled={anyLoading}
-                onClick={() => {
-                  setSchemaModeError("");
-                  setSchemaMode("json");
-                }}
-              >
-                JSON
-              </button>
-            </div>
+          <div className="configuration-actions">
             <button
-              ref={schemaFocusButtonRef}
-              type="button"
-              className={`btn-inline-secondary schema-focus-button ${schemaFocused ? "active" : ""}`}
-              aria-pressed={schemaFocused}
-              aria-label={schemaFocused ? "Exit schema focus mode" : "Open schema focus mode"}
-              onClick={() => setSchemaFocused((current) => !current)}
-              disabled={anyLoading}
+              className="btn-submit configuration-run-button"
+              onClick={handleSubmit}
+              disabled={anyLoading || modelsLoading || slots.length === 0 || !prompt.trim()}
+              aria-busy={anyLoading}
             >
-              <FocusIcon />
-              {schemaFocused ? "Done" : "Focus"}
+              {anyLoading && <span className="spinner" />}
+              {anyLoading ? "Extracting…" : "Run extraction"}
             </button>
           </div>
         </div>
-        {schemaModeError && <div className="sb-parse-error" role="alert">{schemaModeError}</div>}
-        {schemaError && <div className="schema-error" role="alert">{schemaError}</div>}
-        <div
-          id={`schema-panel-${schemaMode}`}
-          className={`schema-editor ${schemaMode === "json" ? "json-mode" : "visual-mode"}`}
-          aria-label="JSON schema editor"
-        >
-          {schemaMode === "json" ? (
-            <Editor
-              language="json"
-              theme={theme === "dark" ? "vs-dark" : "vs"}
-              value={schemaText}
-              onChange={(v) => {
-                setSchemaText(v ?? "{}");
-                setSchemaError("");
-              }}
-              options={{
-                minimap: { enabled: false },
-                fontSize: 13,
-                lineNumbers: "on",
-                readOnly: anyLoading,
-                scrollBeyondLastLine: false,
-                automaticLayout: true,
-                tabSize: 2,
-                wordWrap: "on",
-                renderLineHighlight: "gutter",
-                cursorBlinking: "smooth",
-                lineNumbersMinChars: 3,
-                overviewRulerBorder: false,
-              }}
-            />
-          ) : (
-            <SchemaBuilder schemaText={schemaText} onChange={setSchemaText} disabled={anyLoading} />
-          )}
-        </div>
-        </section>
 
-        <div className="prompt-toolbar">
-          <div className="section-heading-copy compact">
-            <span className="section-kicker">2 · Source</span>
-            <label htmlFor="medical-text">Medical text</label>
-          </div>
-          <button
-            type="button"
-            className={`btn-inline-secondary ${showSystemPrompt ? "active" : ""}`}
-            onClick={() => setShowSystemPrompt((prev) => !prev)}
-            aria-expanded={showSystemPrompt}
-            aria-controls="system-prompt-editor"
-            disabled={anyLoading}
-          >
-            {showSystemPrompt ? "Hide System Prompt" : "Show System Prompt"}
-          </button>
-        </div>
-        <div className="system-prompt-meta">
-          {selectedPreset
-            ? "Tailored to the selected preset and shared by every comparison model."
-            : "The system prompt is shared by every comparison model."}
-        </div>
-        {showSystemPrompt && (
-          <div className="system-prompt-panel" id="system-prompt-editor">
-            <div className="system-prompt-header">
-              <label htmlFor="system-prompt-input">System Prompt</label>
-              <button
-                type="button"
-                className="btn-inline-secondary"
-                onClick={() => setSystemPrompt(systemPromptDefault)}
-                disabled={anyLoading || systemPrompt === systemPromptDefault}
-              >
-                Reset
-              </button>
+        <div className="configuration-body">
+          <section className="schema-workspace">
+            <div className="schema-header">
+              <div className="schema-header-actions">
+                <div className="schema-mode-toggle" role="group" aria-label="Schema editor mode">
+                  <button
+                    id="schema-tab-visual"
+                    className={`tab ${schemaMode === "visual" ? "active" : ""}`}
+                    aria-pressed={schemaMode === "visual"}
+                    disabled={anyLoading}
+                    onClick={() => {
+                      try {
+                        JSON.parse(schemaText);
+                        setSchemaModeError("");
+                        setSchemaMode("visual");
+                      } catch {
+                        setSchemaModeError("Fix JSON errors before switching to Visual mode");
+                      }
+                    }}
+                  >
+                    Visual
+                  </button>
+                  <button
+                    id="schema-tab-json"
+                    className={`tab ${schemaMode === "json" ? "active" : ""}`}
+                    aria-pressed={schemaMode === "json"}
+                    disabled={anyLoading}
+                    onClick={() => {
+                      setSchemaModeError("");
+                      setSchemaMode("json");
+                    }}
+                  >
+                    JSON
+                  </button>
+                </div>
+                <button
+                  ref={configurationFocusButtonRef}
+                  type="button"
+                  className={`btn-inline-secondary configuration-focus-button ${configurationFocused ? "active" : ""}`}
+                  aria-pressed={configurationFocused}
+                  aria-label={
+                    configurationFocused
+                      ? "Exit configuration focus mode"
+                      : "Open configuration focus mode"
+                  }
+                  onClick={() => setConfigurationFocused((current) => !current)}
+                >
+                  <FocusIcon />
+                  {configurationFocused ? "Done" : "Focus"}
+                </button>
+              </div>
             </div>
-            <textarea
-              id="system-prompt-input"
-              name="system-prompt"
-              className="system-prompt-input"
-              value={systemPrompt}
-              onChange={(e) => setSystemPrompt(e.target.value)}
-              maxLength={SYSTEM_PROMPT_MAX_LENGTH}
-              placeholder="Add high-level extraction instructions..."
-              aria-label="System prompt input"
-              disabled={anyLoading}
-            />
+            {schemaModeError && <div className="sb-parse-error" role="alert">{schemaModeError}</div>}
+            {schemaError && <div className="schema-error" role="alert">{schemaError}</div>}
             <div
-              className={`char-count system-prompt-count ${
-                systemPromptLen > SYSTEM_PROMPT_MAX_LENGTH - 200 ? "warning" : ""
-              }`}
+              id={`schema-panel-${schemaMode}`}
+              className={`schema-editor ${schemaMode === "json" ? "json-mode" : "visual-mode"}`}
+              aria-label="JSON schema editor"
             >
-              {systemPromptLen.toLocaleString()} / {SYSTEM_PROMPT_MAX_LENGTH.toLocaleString()}
+              {schemaMode === "json" ? (
+                <Editor
+                  language="json"
+                  theme={theme === "dark" ? "vs-dark" : "vs"}
+                  value={schemaText}
+                  onChange={(v) => {
+                    setSchemaText(v ?? "{}");
+                    setSchemaError("");
+                  }}
+                  options={{
+                    minimap: { enabled: false },
+                    fontSize: 13,
+                    lineNumbers: "on",
+                    readOnly: anyLoading,
+                    scrollBeyondLastLine: false,
+                    automaticLayout: true,
+                    tabSize: 2,
+                    wordWrap: "on",
+                    renderLineHighlight: "gutter",
+                    cursorBlinking: "smooth",
+                    lineNumbersMinChars: 3,
+                    overviewRulerBorder: false,
+                  }}
+                />
+              ) : (
+                <SchemaBuilder schemaText={schemaText} onChange={setSchemaText} disabled={anyLoading} />
+              )}
             </div>
-          </div>
-        )}
-
-        <textarea
-          id="medical-text"
-          name="medical-text"
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          maxLength={MEDICAL_TEXT_MAX_LENGTH}
-          placeholder="Paste or type a clinical note..."
-          aria-label="Medical text input"
-          disabled={anyLoading}
-        />
-        <div
-          className={`char-count ${
-            promptLen > MEDICAL_TEXT_MAX_LENGTH - 1000 ? "warning" : ""
-          }`}
-        >
-          {promptLen.toLocaleString()} / {MEDICAL_TEXT_MAX_LENGTH.toLocaleString()}
+          </section>
         </div>
 
-        <div className="run-settings">
-          <div className="max-tokens-field">
-            <label htmlFor="max-output-tokens">Output limit</label>
-            <input
-              id="max-output-tokens"
-              name="max-output-tokens"
-              type="number"
-              min={1}
-              max={MAX_OUTPUT_TOKENS_CEILING}
-              step={1}
-              value={maxOutputTokens}
-              placeholder="Model default"
-              onChange={(e) => setMaxOutputTokens(e.target.value)}
-              aria-label="Max output tokens override"
+        <div className="configuration-drawers">
+          <section className={`configuration-drawer ${showInput ? "is-open" : ""}`}>
+            <button
+              type="button"
+              className="configuration-drawer-toggle"
+              onClick={() => setShowInput((current) => !current)}
+              aria-expanded={showInput}
+              aria-controls="medical-text-editor"
               disabled={anyLoading}
-            />
-            <span className="max-tokens-hint">
-              Serving models only · blank uses each model&apos;s configured default · override up to{" "}
-              {MAX_OUTPUT_TOKENS_CEILING.toLocaleString()}
-            </span>
-          </div>
+            >
+              <DrawerChevron expanded={showInput} />
+              <span>
+                <strong>Input</strong>
+                <small>Clinical source text to extract</small>
+              </span>
+            </button>
+            {showInput && (
+              <div className="configuration-drawer-content" id="medical-text-editor">
+                <label className="sr-only" htmlFor="medical-text">Clinical source text</label>
+                <textarea
+                  id="medical-text"
+                  name="medical-text"
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  maxLength={MEDICAL_TEXT_MAX_LENGTH}
+                  placeholder="Paste or type a clinical note..."
+                  aria-label="Medical text input"
+                  disabled={anyLoading}
+                />
+                <div
+                  className={`char-count ${
+                    promptLen > MEDICAL_TEXT_MAX_LENGTH - 1000 ? "warning" : ""
+                  }`}
+                >
+                  {promptLen.toLocaleString()} / {MEDICAL_TEXT_MAX_LENGTH.toLocaleString()}
+                </div>
+              </div>
+            )}
+          </section>
 
-          <button
-            className="btn-submit"
-            onClick={handleSubmit}
-            disabled={anyLoading || modelsLoading || slots.length === 0 || !prompt.trim()}
-            aria-busy={anyLoading}
-          >
-            {anyLoading && <span className="spinner" />}
-            {anyLoading ? "Extracting…" : "Run extraction"}
-          </button>
+          <section className={`configuration-drawer ${showSystemPrompt ? "is-open" : ""}`}>
+            <button
+              type="button"
+              className="configuration-drawer-toggle"
+              onClick={() => setShowSystemPrompt((prev) => !prev)}
+              aria-expanded={showSystemPrompt}
+              aria-controls="system-prompt-editor"
+              disabled={anyLoading}
+            >
+              <DrawerChevron expanded={showSystemPrompt} />
+              <span>
+                <strong>Instructions</strong>
+                <small>Optional guidance applied to every model</small>
+              </span>
+            </button>
+            {showSystemPrompt && (
+              <div className="configuration-drawer-content" id="system-prompt-editor">
+                <div className="system-prompt-header">
+                  <label htmlFor="system-prompt-input">Instructions</label>
+                  <button
+                    type="button"
+                    className="btn-inline-secondary"
+                    onClick={() => setSystemPrompt(systemPromptDefault)}
+                    disabled={anyLoading || systemPrompt === systemPromptDefault}
+                  >
+                    Reset
+                  </button>
+                </div>
+                <p className="system-prompt-meta">
+                  {selectedPreset
+                    ? "Tailored to the selected preset and shared by every comparison model."
+                    : "Shared by every comparison model in this run."}
+                </p>
+                <textarea
+                  id="system-prompt-input"
+                  name="system-prompt"
+                  className="system-prompt-input"
+                  value={systemPrompt}
+                  onChange={(e) => setSystemPrompt(e.target.value)}
+                  maxLength={SYSTEM_PROMPT_MAX_LENGTH}
+                  placeholder="Add high-level extraction instructions..."
+                  aria-label="Instructions input"
+                  disabled={anyLoading}
+                />
+                <div
+                  className={`char-count system-prompt-count ${
+                    systemPromptLen > SYSTEM_PROMPT_MAX_LENGTH - 200 ? "warning" : ""
+                  }`}
+                >
+                  {systemPromptLen.toLocaleString()} / {SYSTEM_PROMPT_MAX_LENGTH.toLocaleString()}
+                </div>
+              </div>
+            )}
+          </section>
         </div>
       </div>
+
+      <div
+        className="configuration-resizer"
+        role="separator"
+        aria-label="Resize configuration panel"
+        aria-orientation="vertical"
+        aria-valuemin={MIN_LEFT_PANE_WIDTH}
+        aria-valuemax={clampLeftPaneWidth(MAX_LEFT_PANE_WIDTH)}
+        aria-valuenow={Math.round(leftPaneWidth)}
+        tabIndex={leftPaneMode === "collapsed" ? -1 : 0}
+        onPointerDown={handlePaneResizePointerDown}
+        onPointerMove={handlePaneResizePointerMove}
+        onPointerUp={handlePaneResizeEnd}
+        onPointerCancel={handlePaneResizeEnd}
+        onDoubleClick={() => setLeftPaneWidth(DEFAULT_LEFT_PANE_WIDTH)}
+        onKeyDown={handlePaneResizeKeyDown}
+        title="Drag to resize. Double-click to reset."
+      />
 
       <div className="panel-right-container">
         {slots.length === 0 && (
@@ -2606,6 +2701,9 @@ function App() {
                 error: null,
                 activeTab: "formatted",
                 aiExtractPrecision: false,
+                aiExtractCitations: false,
+                aiExtractConfidenceScores: false,
+                maxOutputTokensOverride: "",
                 copied: false,
                 outputTokenLimit: null,
                 outputTokenLimitSource: null,
@@ -2699,7 +2797,6 @@ function App() {
         {activeView === "structured-output" && (
           <div className="context-toolbar" aria-label="Playground controls">
             <div className="context-toolbar-group context-toolbar-editor">
-              <span className="context-toolbar-label">Editor</span>
               {paneToggle}
             </div>
 

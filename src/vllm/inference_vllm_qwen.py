@@ -197,7 +197,7 @@ def entrypoint(port: int) -> str:
         "--dtype",
         "float16",
         "--max-model-len",
-        "16384",
+        "8192",
         "--gpu-memory-utilization",
         "0.85",
         "--guided-decoding-backend",

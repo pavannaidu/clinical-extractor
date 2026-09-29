@@ -14,6 +14,7 @@ if str(APP_ROOT) not in sys.path:
 
 from api import routes  # noqa: E402
 from api.schemas import (  # noqa: E402
+    AiExtractOptions,
     InferenceRequest,
     LoadTestRequest,
     ModelInfo,
@@ -617,7 +618,7 @@ def test_list_models_falls_back_to_workspace_listing_when_config_missing(monkeyp
     ]
 
 
-def test_build_ai_extract_request_converts_schema_and_precision_options():
+def test_build_ai_extract_request_converts_schema_and_explicit_options():
     schema = {
         "type": "object",
         "description": "Extract the clinical facts.",
@@ -660,6 +661,8 @@ def test_build_ai_extract_request_converts_schema_and_precision_options():
         schema_json=json.dumps(schema),
         system_prompt="Use only facts present in the note.",
         precision=True,
+        enable_citations=True,
+        enable_confidence_scores=True,
     )
 
     assert path == routes.AI_EXTRACT_PATH
@@ -699,6 +702,34 @@ def test_build_ai_extract_request_converts_schema_and_precision_options():
     assert any("Required-property" in warning for warning in warnings)
     assert any("Nullable" in warning for warning in warnings)
     assert any("format" in warning for warning in warnings)
+
+
+def test_ai_extract_options_and_payload_default_to_all_disabled():
+    assert AiExtractOptions().model_dump() == {
+        "precision": False,
+        "enable_citations": False,
+        "enable_confidence_scores": False,
+    }
+
+    path, payload, warnings = routes._build_ai_extract_request(
+        prompt="Source text.",
+        schema_json=json.dumps(
+            {
+                "type": "object",
+                "properties": {"value": {"type": "string"}},
+            }
+        ),
+        system_prompt="",
+        precision=False,
+    )
+
+    assert path == routes.AI_EXTRACT_PATH
+    assert payload["options"] == {
+        "version": "2.1",
+        "enable_citations": False,
+        "enable_confidence_scores": False,
+    }
+    assert warnings == []
 
 
 @pytest.mark.parametrize(
@@ -862,7 +893,11 @@ def test_run_inference_ai_extract_posts_payload_and_returns_clean_prediction(
                 system_prompt="Extract the patient name.",
                 model=routes.AI_EXTRACT_TARGET_ID,
                 runtime="ai_extract",
-                ai_extract_options={"precision": True},
+                ai_extract_options={
+                    "precision": True,
+                    "enable_citations": True,
+                    "enable_confidence_scores": True,
+                },
             )
         )
     )
@@ -875,7 +910,42 @@ def test_run_inference_ai_extract_posts_payload_and_returns_clean_prediction(
     assert call["method"] == "POST"
     assert call["path"] == routes.AI_EXTRACT_PATH
     assert call["body"]["options"]["mode"] == "precision"
+    assert call["body"]["options"]["enable_citations"] is True
+    assert call["body"]["options"]["enable_confidence_scores"] is True
     assert "max_tokens" not in call["body"]
+
+
+def test_run_inference_ai_extract_disables_optional_features_by_default(
+    monkeypatch,
+):
+    workspace = FakeWorkspaceClient(
+        response={"response": {"value": {"value": "ok"}}}
+    )
+    monkeypatch.setattr(routes, "_get_workspace_client", lambda: workspace)
+
+    result = asyncio.run(
+        routes.run_inference(
+            InferenceRequest(
+                prompt="Source text.",
+                schema_json=json.dumps(
+                    {
+                        "type": "object",
+                        "properties": {"value": {"type": "string"}},
+                    }
+                ),
+                model=routes.AI_EXTRACT_TARGET_ID,
+                runtime="ai_extract",
+            )
+        )
+    )
+
+    assert result.prediction == {"value": "ok"}
+    options = workspace.api_client.calls[0]["body"]["options"]
+    assert options == {
+        "version": "2.1",
+        "enable_citations": False,
+        "enable_confidence_scores": False,
+    }
 
 
 @pytest.mark.parametrize(

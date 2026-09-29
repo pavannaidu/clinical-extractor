@@ -46,6 +46,8 @@ class ModelInfo(BaseModel):
 
 class AiExtractOptions(BaseModel):
     precision: bool = False
+    enable_citations: bool = False
+    enable_confidence_scores: bool = False
 
 
 class InferenceRequest(BaseModel):

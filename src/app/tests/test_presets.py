@@ -59,6 +59,23 @@ def _assert_strict_objects(schema: dict[str, Any]) -> None:
         _assert_strict_objects(items)
 
 
+def _assert_schema_descriptions(schema: dict[str, Any]) -> None:
+    description = schema.get("description")
+    assert isinstance(description, str)
+    assert description.strip()
+    assert len(description) <= 120
+
+    properties = schema.get("properties")
+    if isinstance(properties, dict):
+        for child in properties.values():
+            assert isinstance(child, dict)
+            _assert_schema_descriptions(child)
+
+    items = schema.get("items")
+    if isinstance(items, dict):
+        _assert_schema_descriptions(items)
+
+
 def _contains_source_text(schema: dict[str, Any]) -> bool:
     if _has_type(schema, "object"):
         properties = schema.get("properties", {})
@@ -168,6 +185,11 @@ def test_builtin_preset_schemas_are_strict_compatible():
         schema = json.loads(preset["schema_json"])
         assert schema["type"] == "object"
         _assert_strict_objects(schema)
+
+
+def test_builtin_preset_schema_fields_have_short_descriptions():
+    for preset in PRESETS:
+        _assert_schema_descriptions(json.loads(preset["schema_json"]))
 
 
 def test_builtin_preset_schemas_fit_the_visual_editor():

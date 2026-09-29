@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 from typing import Any
 
 
@@ -43,6 +44,129 @@ def _array(items: dict[str, Any], *, nullable: bool = False) -> dict[str, Any]:
     }
 
 
+_DESCRIPTION_OVERRIDES = {
+    "age": "Patient age.",
+    "age_years": "Age in years.",
+    "allergies": "Allergy entries.",
+    "analytes": "Analyte results.",
+    "assertion": "Mention assertion.",
+    "assessment": "Clinical assessments.",
+    "bmi": "Body mass index.",
+    "body_site": "Anatomical location.",
+    "changed": "Changed medications.",
+    "certainty": "Clinical certainty.",
+    "collected_at": "Collection time.",
+    "continued": "Continued medications.",
+    "critical_result": "Whether the result is critical.",
+    "diagnoses": "Diagnosis entries.",
+    "diseases": "Disease mentions.",
+    "dose_regimen": "Reported dose regimen.",
+    "ecog_status": "ECOG performance status.",
+    "entities": "Clinical mentions.",
+    "entity_type": "Clinical entity category.",
+    "exclusion_flags": "Met exclusion criteria.",
+    "experiencer": "Person experiencing the finding.",
+    "fio2_percent": "Inspired oxygen percentage.",
+    "flow_rate_lpm": "Oxygen flow rate.",
+    "follow_up": "Follow-up plan.",
+    "history_of_present_illness": "Current illness history.",
+    "icd_code": "Reported ICD code.",
+    "inclusion_flags": "Met inclusion criteria.",
+    "key_labs": "Key lab results.",
+    "laterality": "Anatomical side.",
+    "measurements": "Reported measurements.",
+    "medications": "Medication entries.",
+    "onset_timing": "Event onset timing.",
+    "oxygen_saturation_percent": "Oxygen saturation percentage.",
+    "present_on_admission": "Present on admission status.",
+    "prior_conservative_therapy": "Prior conservative treatment.",
+    "prior_therapy_summary": "Prior therapy summary.",
+    "procedures": "Procedure entries.",
+    "prn": "Whether use is as needed.",
+    "prn_reason": "As-needed use reason.",
+    "rechallenge_performed": "Whether rechallenge occurred.",
+    "reference_high": "Reference upper bound.",
+    "reference_low": "Reference lower bound.",
+    "reference_range": "Reference interval.",
+    "result_time": "Result time.",
+    "results": "Lab results.",
+    "source_text": "Verbatim supporting text.",
+    "spo2": "Oxygen saturation.",
+    "study_date": "Study date.",
+    "studies": "Imaging studies.",
+    "started": "Started medications.",
+    "stopped": "Discontinued medications.",
+    "temperature_f": "Temperature in Fahrenheit.",
+    "temporality": "Mention timing context.",
+    "timestamp": "Observation time.",
+    "value_text": "Reported nonnumeric value.",
+    "vitals": "Vital measurements.",
+}
+
+_ARRAY_ITEM_DESCRIPTIONS = {
+    "allergies": "One allergy.",
+    "analytes": "One analyte result.",
+    "assessment": "One assessment.",
+    "changed": "One changed medication.",
+    "continued": "One continued medication.",
+    "diagnoses": "One diagnosis.",
+    "diseases": "One disease mention.",
+    "entities": "One clinical mention.",
+    "exclusion_flags": "One exclusion criterion.",
+    "findings": "One imaging finding.",
+    "follow_up_appointments": "One follow-up appointment.",
+    "inclusion_flags": "One inclusion criterion.",
+    "key_labs": "One key lab result.",
+    "measurements": "One measurement.",
+    "medications": "One medication.",
+    "past_medical_history": "One history item.",
+    "pending_tests": "One pending test.",
+    "physical_exam": "One exam finding.",
+    "procedures": "One procedure.",
+    "reaction": "One reaction.",
+    "results": "One lab result.",
+    "return_precautions": "One return precaution.",
+    "review_of_systems": "One review finding.",
+    "started": "One started medication.",
+    "stopped": "One stopped medication.",
+    "studies": "One imaging study.",
+}
+
+
+def _short_description(field_name: str) -> str:
+    override = _DESCRIPTION_OVERRIDES.get(field_name)
+    if override:
+        return override
+    return f"Reported {field_name.replace('_', ' ')}."
+
+
+def _add_descriptions(schema: dict[str, Any], root_description: str) -> dict[str, Any]:
+    described = deepcopy(schema)
+    described["description"] = root_description
+
+    def visit(node: dict[str, Any], field_name: str | None = None) -> None:
+        if field_name is not None:
+            node.setdefault("description", _short_description(field_name))
+
+        properties = node.get("properties")
+        if isinstance(properties, dict):
+            for child_name, child in properties.items():
+                if isinstance(child, dict):
+                    visit(child, child_name)
+
+        items = node.get("items")
+        if isinstance(items, dict):
+            if field_name is not None:
+                items.setdefault(
+                    "description",
+                    _ARRAY_ITEM_DESCRIPTIONS.get(field_name, f"One {field_name.replace('_', ' ')} item."),
+                )
+            visit(items)
+
+    visit(described)
+    return described
+
+
 def _preset(
     preset_id: str,
     name: str,
@@ -51,11 +175,12 @@ def _preset(
     example_prompt: str,
     system_prompt: str,
 ) -> dict[str, str]:
+    described_schema = _add_descriptions(schema, description)
     return {
         "id": preset_id,
         "name": name,
         "description": description,
-        "schema_json": json.dumps(schema, indent=2),
+        "schema_json": json.dumps(described_schema, indent=2),
         "example_prompt": example_prompt,
         "system_prompt": system_prompt,
     }

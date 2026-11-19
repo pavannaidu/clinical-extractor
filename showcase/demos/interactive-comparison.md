@@ -2,11 +2,16 @@
 
 ## Story
 
-Show the structured-output decision framework live by comparing:
+Use the synthetic **EHR Note Extraction** fixture to test one concrete distinction:
+the chest X-ray is recommended in six weeks, while primary care is next week.
+Compare endpoints on that same note, prompt, and schema:
 
 - a Foundation Model API model
 - a custom MedGemma endpoint with XGrammar
-- optionally a second custom endpoint such as Qwen, or a fine-tuned variant after it has been attached to the app resource bindings
+- optionally base Qwen, after its endpoint has been attached to the app resource bindings
+
+Use fine-tuned Qwen in a separate NCBI disease-mention comparison with its training
+schema. The [data guide](../../docs/data.md) describes the two task contracts.
 
 ## Execution Layer
 
@@ -16,14 +21,17 @@ Show the structured-output decision framework live by comparing:
 ## Suggested Steps
 
 1. Deploy the bundle and open the `clinical-extractor` app.
-2. Choose one workload pack from `../workloads`.
+2. Choose the [EHR workload pack](../workloads/ehr-clinical-notes/README.md), or select **EHR Note Extraction** in the app.
 3. Paste the workload sample text and schema into the app.
 4. Select one FMAPI model and one custom endpoint.
 5. Run extraction and compare:
    - JSON validity
-   - extraction quality
-   - terminology handling
-   - latency or throughput expectations
+   - agreement with the note's two follow-up timeframes and vitals
+   - unsupported or omitted values
+   - observed latency and token usage
+6. For a scored comparison, load reviewed JSON answers into Unity Catalog and use
+   the [evaluation recipe](../../docs/setup.md#run-a-scored-evaluation). Record
+   field agreement separately from schema validity.
 
 ## Best Fit Workloads
 

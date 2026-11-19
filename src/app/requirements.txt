@@ -77,10 +77,13 @@ databricks-sdk==0.168.0
     # via
     #   -r src/app/requirements.in
     #   databricks-agents
+    #   dbdemos-tracker
     #   mlflow-skinny
     #   mlflow-tracing
 dataclasses-json==0.6.7
     # via databricks-agents
+dbdemos-tracker==0.1.11
+    # via -r src/app/requirements.in
 docker==7.2.0
     # via mlflow
 fastapi==0.135.1
@@ -301,6 +304,7 @@ requests==2.34.2
     #   -r src/app/requirements.in
     #   azure-core
     #   databricks-sdk
+    #   dbdemos-tracker
     #   docker
     #   google-api-core
     #   google-cloud-storage

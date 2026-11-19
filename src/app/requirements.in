@@ -3,6 +3,7 @@ fastapi==0.135.1
 pydantic==2.12.5
 uvicorn==0.54.0
 databricks-sdk==0.168.0
+dbdemos-tracker==0.1.11
 psycopg2-binary==2.9.13
 jsonschema==4.26.0
 requests==2.34.2

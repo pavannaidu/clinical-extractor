@@ -11,7 +11,7 @@ This is the most direct way to show the structured-output gap: many customers al
 ## Recommended Demo Path
 
 - FMAPI first for a low-complexity baseline
-- MedGemma + XGrammar for higher clinical extraction quality
+- MedGemma + XGrammar for a medical-model comparison against reviewed expected values
 - Batch path for scaling across large note volumes
 
 ## Files

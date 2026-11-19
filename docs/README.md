@@ -4,6 +4,7 @@
 |---|---|
 | [Setup and operations](setup.md) | Prerequisites, bundle variables, deployment, local development, tests, and model jobs |
 | [Architecture](architecture.md) | App modules, data flow, serving contracts, and bundle resources |
+| [Named data and sources](data.md) | Synthetic fixture names and counts, NCBI corpus revision, transformations, and evaluation contracts |
 | [Source guide](../src/README.md) | Qwen and MedGemma notebook locations and bundle job keys |
 | [Demo runbook](demo-runbook.md) | Customer presentation flow and talking points |
 | [Benchmarks](benchmarks.md) | What the notebook and app measurements establish |

@@ -4,17 +4,25 @@ Use this runbook for a customer-facing field demo of structured AI for life scie
 
 ## Goal
 
-Show that Databricks can support a progression from Foundation Model API structured extraction to domain-specific and fine-tuned custom models while keeping JSON outputs reliable enough for downstream workflows.
+Show how a reviewer can turn one clinical note into a schema-checked record,
+inspect its facts, and choose a model using measured quality and delivery results.
+The concrete opening question is whether the chest X-ray belongs on a six-week
+follow-up worklist while the primary-care visit belongs next week.
 
 ## Suggested Demo Flow
 
 ### 1. Start with the problem
 
-Open [../README.md](../README.md) or [../showcase/overview.md](../showcase/overview.md) and explain:
+Open the **EHR Note Extraction** preset or the
+[EHR workload pack](../showcase/workloads/ehr-clinical-notes/README.md). Point to
+“repeat chest x-ray in 6 weeks” and “follow up with primary care next week.” Ask
+which field a coordinator needs before adding a record to a follow-up worklist.
 
-- FMAPI models support structured output in managed flows
-- custom Unity Catalog-served models often return raw text
-- life sciences workloads need deterministic JSON for production
+This is repository-authored synthetic text. It contains two different timeframes,
+so it tests whether the extraction preserves the association between an action
+and its timing. Valid JSON alone cannot answer that question. The
+[data-source guide](data.md) identifies this fixture and the separate batch and
+NCBI inputs.
 
 ### 2. Introduce the decision framework
 
@@ -22,9 +30,9 @@ Open [../showcase/decision-framework.md](../showcase/decision-framework.md).
 
 Key message:
 
-- try FMAPI first
-- move to a domain model plus XGrammar if clinical quality matters more
-- move to PEFT plus XGrammar if the customer's terminology still requires adaptation
+- Start with an available managed model or AI Extract for supported field schemas.
+- Evaluate custom Qwen/MedGemma when reviewed examples show a reason to own the weights or decoder.
+- Test fine-tuning on a fixed task when persistent errors remain, with held-out examples for comparison.
 
 ### 3. Pick a workload pack
 
@@ -37,6 +45,8 @@ Choose one folder under [../showcase/workloads](../showcase/workloads):
 - `drug-interaction-screening`
 
 Use the sample note, schema, and prompt directly in the app or endpoint request.
+Keep all three fixed across endpoints. The pack's expected-field file is a review
+checklist, not a row-level ground-truth answer file.
 
 ### 4. Show the app comparison cockpit
 
@@ -44,17 +54,21 @@ Use `src/app` to demonstrate:
 
 - AI Extract for managed extraction
 - GPT-5.4 Mini as the general-purpose structured-output baseline
-- fine-tuned Qwen as the custom model, using its disease-extraction task
+- base Qwen or MedGemma as a custom comparison on the same EHR schema
 
-Compare base Qwen with fine-tuned Qwen when explaining adaptation. Bring in
-MedGemma as an optional medical pretrained model comparison. Attach each custom
-endpoint to the app with `CAN_QUERY` and select it in Model Settings.
+Check the two follow-up timeframes, heart rate `82`, and oxygen saturation `96`
+against the source. Then inspect schema validity, latency, and token usage.
+Attach each custom endpoint to the app with `CAN_QUERY` and select it in Model Settings.
+
+For the separate adaptation story, compare base Qwen with fine-tuned Qwen on its
+NCBI disease-mention task and `diseases` string-array schema. The broader EHR preset
+and the app's richer disease-object preset are different contracts.
 
 Suggested talking points:
 
 - one schema can be passed to different model backends
 - custom endpoints still return constrained JSON
-- the app makes the tradeoff between management simplicity and domain accuracy visible
+- reviewed field comparisons determine whether a model meets the task's acceptance criteria
 
 ### 5. Close with scale or specialization
 
@@ -64,6 +78,16 @@ Pick one:
   Show that the same extraction pattern scales to distributed processing.
 - **Fine-tuning**
   Test whether PEFT improves customer-specific terminology handling.
+
+For a concrete recorded result, the November 18, 2026 smoke check produced 20/20
+schema-valid rows in each of three batch paths. Those are 60 outputs from the same
+20 synthetic inputs. Show the [benchmark scope and limitations](benchmarks.md)
+before discussing quality or performance implications.
+
+Close by agreeing on a reviewed dataset and thresholds for field agreement,
+unsupported values, omissions, and latency. The
+[one-row evaluation recipe](setup.md#run-a-scored-evaluation) is a reproducible
+setup check; extend it with independent reviewed examples for a model decision.
 
 ## Demo Commands
 

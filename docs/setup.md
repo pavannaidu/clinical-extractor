@@ -2,7 +2,8 @@
 
 ## Prerequisites
 
-- Databricks CLI 0.270.0 or later, authenticated to the target workspace.
+- Databricks CLI 1.26.0 (used to verify these commands), or a compatible newer
+  release, authenticated to the target workspace.
 - Python 3.12 and Node.js 20 or 22 for local development.
 - An existing Unity Catalog catalog and schema; defaults are `main.mlops`.
 - For the app: a Lakebase project, branch, and database, a SQL warehouse for evaluation,
@@ -10,6 +11,35 @@
 - For MedGemma downloads and fine-tuning: access to the Hugging Face model and a
   Databricks secret configured by `hf_secret_scope` and `hf_secret_key`. The public
   Qwen model and NCBI Disease dataset do not require that token.
+
+The deployer must be able to create/manage the app and grant its resource bindings.
+Evaluation users need `CAN_USE` on the SQL warehouse plus `USE CATALOG`,
+`USE SCHEMA`, and `SELECT` on the chosen Unity Catalog data. Creating the example
+table below also requires `CREATE TABLE` in that schema. The app needs the
+Postgres connection/create permission, AI Extract function execution, and model
+query permissions declared in `resources/clinical_extractor.app.yml`.
+
+Check that every serving endpoint retained in that resource file exists in your
+workspace. For a managed-only installation, remove unavailable custom endpoint
+bindings and their entries in `src/app/models.json`. Keep the environment binding
+in `src/app/app.yaml` aligned if you replace its default model. Configure your
+workspace's AI Gateway policies for the endpoints you use.
+
+## Start from a fresh clone
+
+```bash
+git clone https://github.com/databricks-field-eng/clinical-extractor.git
+cd clinical-extractor
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r src/app/requirements-dev.txt
+npm --prefix src/app/frontend ci
+```
+
+The runtime and development requirements are locked. Use your organization's
+configured package mirror if direct package access is restricted.
+
+## Authenticate
 
 The `dev` target resolves its workspace from your CLI profile or authentication
 environment. Set your workspace URL and a local profile name, then authenticate:
@@ -62,7 +92,8 @@ Replace the placeholders in this example before using it:
 
 For CI, supply the same settings through `BUNDLE_VAR_<variable-name>` environment
 variables. Keep secret values in Databricks secret scopes; the bundle contains only
-the scope and key names.
+the scope and key names. A managed-only app can omit `hf_secret_scope`; it is used
+by the optional MedGemma jobs.
 
 Use the current app name when continuing an existing deployment. For a new app,
 use a distinct name containing only lowercase
@@ -71,6 +102,21 @@ the identity-based default exceeds that limit. New non-production targets sharin
 workspace should use distinct app names.
 
 ## Build and deploy the app
+
+For a new workspace that needs custom models, deploy and run their job definitions
+first, then attach the resulting endpoints to the app. For example, after supplying
+the required bundle variables:
+
+```bash
+databricks bundle plan --select jobs.inference_vllm_qwen --target dev
+databricks bundle deploy --select jobs.inference_vllm_qwen --target dev
+databricks bundle run inference_vllm_qwen --target dev
+```
+
+Use `jobs.finetune_qwen3_disease` for the independent fine-tuning path, or select
+the appropriate MedGemma jobs from the model-job table below. Bind each custom
+endpoint only after it is ready. A targeted app deployment does not create model
+endpoints, and a full deployment with bindings to missing endpoints can fail.
 
 Run these commands from the repository root:
 
@@ -81,6 +127,7 @@ databricks bundle validate --strict --target dev
 databricks bundle plan --select apps.clinical_extractor,experiments.clinical_extractor_evaluations --target dev
 databricks bundle deploy --select apps.clinical_extractor,experiments.clinical_extractor_evaluations --target dev
 databricks bundle run clinical_extractor --target dev
+databricks bundle summary --target dev
 ```
 
 The targeted deployment includes the experiment referenced by the app. Review the
@@ -150,6 +197,67 @@ when supplied. In Databricks Apps these values come from the resource bindings.
 Dataset queries use the signed-in user's forwarded access token and the app's `sql`
 user scope.
 
+## Run a scored evaluation
+
+This one-row synthetic setup check uses `med_001` from the batch notebook. It
+checks that discovery, inference, persistence, and metric reporting work together.
+It is not an accuracy study. Use an available general-purpose endpoint for this
+medication task; the disease-only fine-tuned Qwen model is trained for another
+output contract.
+
+1. In Databricks SQL, replace `<catalog>` and `<schema>` with the same values used
+   by the bundle and run the statement below. The table is created only if absent.
+   Choose a new table name if that example name already contains unrelated data.
+
+```sql
+CREATE TABLE IF NOT EXISTS <catalog>.<schema>.clinical_extractor_eval_demo
+USING DELTA AS
+SELECT
+  'med_001' AS record_id,
+  'Extract medication info: Prescribe Amoxicillin 500mg orally three times daily for 10 days to treat bacterial sinusitis.' AS input_text,
+  '{"medication_name":"Amoxicillin","dosage":"500mg","frequency":"three times daily","route":"orally","indication":"bacterial sinusitis"}' AS ground_truth;
+```
+
+2. Create a custom preset in the app named **Medication Smoke Evaluation**. Use
+   the input text above as its example and the following JSON schema:
+
+```json
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "medication_name": {"type": "string"},
+    "dosage": {"type": "string"},
+    "frequency": {"type": "string"},
+    "route": {"type": "string"},
+    "indication": {"type": "string"}
+  },
+  "required": ["medication_name", "dosage", "frequency", "route", "indication"]
+}
+```
+
+   Use this system prompt: “Extract the five requested medication fields from the
+   source. Preserve drug capitalization and dosage formatting. Return one JSON
+   object matching the schema and do not add facts.”
+
+3. Open **Evaluations [Preview]**, choose **Create evaluation**, and select the
+   table above. Map **Clinical text column** to `input_text`, **JSON ground truth
+   column** to `ground_truth`, and **Record ID column** to `record_id`. Set
+   **Rows** to `1`, choose an available model, and select the new preset.
+4. Choose **Validate dataset**. It should report one valid row and zero invalid
+   rows before inference. Choose **Run evaluation** and inspect the completed
+   report and its MLflow link.
+5. Check the schema-valid percentage, field agreement, fully-correct-record
+   percentage, and latency. The reference contains five scalar values. A matching
+   prediction scores five of five fields and no extra fields; the score is an
+   observed result, not a promised model outcome.
+
+Field comparison canonicalizes object/array ordering and then compares JSON
+values. Different wording or dose formatting can therefore count as a mismatch.
+Use reviewed labels and explicit normalization rules for a larger held-out
+evaluation. The app accepts at most 100 rows per run and does not turn the workload
+packs' field-name checklists into ground-truth JSON automatically.
+
 ## Model jobs
 
 Registration and Serverless GPU batch inference share model weights under
@@ -198,6 +306,19 @@ The shared presentation source is `src/app/frontend/public/info/`.
 Bundle sync excludes documentation, showcase files, frontend source, and tests
 from workspace uploads; it deploys the built app assets and model notebooks.
 Rebuild the frontend before deployment.
+
+## Usage tracking
+
+The Python app uses `dbdemos-tracker==0.1.11` with demo ID
+`hls-clinical-extractor`. One tracker is initialized per app startup using the
+configured workspace. Its manual API lets the middleware filter page views to
+`@databricks.com` visitors before sending an event; the library hashes the email.
+Only the app and presentation entry pages are counted. Query strings, request
+bodies, API calls, static assets, and other email domains are excluded.
+
+Delivery runs in the library's background worker. Initialization and tracking
+errors are caught so the app keeps serving requests. Local runs without
+`DATABRICKS_HOST` skip tracking.
 
 ## Python dependency locks
 

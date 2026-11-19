@@ -1,7 +1,7 @@
 # Historical MedGemma serving optimization
 
-Recorded February–March 2026. All runs are from MLflow experiment
-`2468185612186458` on the FEVM workspace. Version and configuration descriptions
+Recorded February–March 2026. All runs are from the original demo's MLflow
+benchmark experiment. Version and configuration descriptions
 refer to those experiments; see [setup](../setup.md) for current deployment settings.
 
 ## Benchmark History

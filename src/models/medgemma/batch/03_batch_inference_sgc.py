@@ -24,7 +24,7 @@
 
 # DBTITLE 1,Widgets
 dbutils.widgets.removeAll()
-dbutils.widgets.text("catalog",      "pavan_naidu_catalog",          "Catalog")
+dbutils.widgets.text("catalog",      "main",          "Catalog")
 dbutils.widgets.text("schema",       "mlops",                        "Schema")
 dbutils.widgets.text("hf_model_name", "google/medgemma-1.5-4b-it", "HuggingFace Model Name")
 dbutils.widgets.text("input_table",  "medgemma_batch_input",         "Input Delta Table")
@@ -32,7 +32,7 @@ dbutils.widgets.text("output_table", "medgemma_batch_output_sgc",    "Output Del
 dbutils.widgets.text("num_gpus",        "2",                            "Number of GPU Workers")
 dbutils.widgets.text("batch_size",      "96",                           "Rows per Ray batch")
 dbutils.widgets.dropdown("optimization_mode", "throughput", ["wall_clock", "throughput"], "vLLM Optimization Mode")
-dbutils.widgets.text("experiment_name", "/Users/pavan.naidu@databricks.com/medgemma-xgrammar", "MLflow Experiment Name")
+dbutils.widgets.text("experiment_name", "", "MLflow Experiment Name (blank = current user)")
 
 # COMMAND ----------
 
@@ -42,7 +42,7 @@ dbutils.widgets.text("experiment_name", "/Users/pavan.naidu@databricks.com/medge
 # COMMAND ----------
 
 # DBTITLE 1,Install vLLM + Ray + Dependencies
-# MAGIC %pip install "vllm==0.8.5.post1" "ray[data]>=2.47.1" "transformers<4.54.0" "optree>=0.13.0" hf_transfer "numpy==1.26.4"
+# MAGIC %pip install "vllm==0.8.5.post1" "ray[data]==2.60.0" "transformers==4.53.3" "optree==0.20.0" "hf_transfer==0.1.9" "numpy==1.26.4"
 
 # COMMAND ----------
 
@@ -83,7 +83,9 @@ OUTPUT_TABLE = dbutils.widgets.get("output_table")
 NUM_GPUS        = int(dbutils.widgets.get("num_gpus"))
 RAY_BATCH_SIZE  = int(dbutils.widgets.get("batch_size"))
 OPTIMIZATION_MODE = dbutils.widgets.get("optimization_mode").strip().lower()
-EXPERIMENT_NAME = dbutils.widgets.get("experiment_name")
+EXPERIMENT_NAME = dbutils.widgets.get("experiment_name").strip() or (
+    f"/Users/{dbutils.notebook.entry_point.getDbutils().notebook().getContext().userName().get()}/medgemma-xgrammar"
+)
 
 if OPTIMIZATION_MODE not in {"wall_clock", "throughput"}:
     raise ValueError(f"optimization_mode must be one of ['wall_clock', 'throughput'], got {OPTIMIZATION_MODE!r}")

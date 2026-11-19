@@ -4,19 +4,25 @@
 
 - Databricks CLI 0.270.0 or later, authenticated to the target workspace.
 - Python 3.12 and Node.js 20 or 22 for local development.
-- An existing Unity Catalog catalog and schema; defaults are `pavan_naidu_catalog.mlops`.
+- An existing Unity Catalog catalog and schema; defaults are `main.mlops`.
 - For the app: a Lakebase project, branch, and database, a SQL warehouse for evaluation,
   and the serving endpoints attached in `resources/clinical_extractor.app.yml`.
-- For MedGemma downloads and fine-tuning: access to the Hugging Face model and the
-  `pavan_naidu/hf_token` Databricks secret. The public Qwen model and NCBI Disease
-  dataset do not require that token.
+- For MedGemma downloads and fine-tuning: access to the Hugging Face model and a
+  Databricks secret configured by `hf_secret_scope` and `hf_secret_key`. The public
+  Qwen model and NCBI Disease dataset do not require that token.
 
-The `dev` target uses `https://fevm-pavan-naidu.cloud.databricks.com` and profile `FEVM`.
-Authenticate or refresh an expired session with:
+The `dev` target resolves its workspace from your CLI profile or authentication
+environment. Set your workspace URL and a local profile name, then authenticate:
 
 ```bash
-databricks auth login --host https://fevm-pavan-naidu.cloud.databricks.com --profile FEVM
+export DATABRICKS_HOST="https://<your-workspace-host>"
+export DATABRICKS_CONFIG_PROFILE="clinical-extractor"
+databricks auth login --host "$DATABRICKS_HOST" --profile "$DATABRICKS_CONFIG_PROFILE"
 ```
+
+Keep these environment variables set for the commands below. If you already use a
+named profile, set `DATABRICKS_CONFIG_PROFILE` to that name; the profile supplies the
+host when `DATABRICKS_HOST` is unset. A command-line `--profile` also selects it.
 
 ## Configure the bundle
 
@@ -34,19 +40,32 @@ stable so existing deployment state continues to address the same resources.
 | `batch_experiment_name` | MLflow experiment for Serverless GPU batch runs |
 | `medgemma_*`, `qwen3_finetuned_*`, `finetune_registered_model_name` | Registered model and serving endpoint names |
 | `gpu_node_type`, `gpu_spark_version` | Classic UDF cluster: two `g5.2xlarge` workers on 17.3 LTS ML GPU |
+| `hf_secret_scope`, `hf_secret_key` | Databricks secret holding the Hugging Face token |
 
-Defaults for existing workspace resources point to the original FEVM deployment.
-Override them for another workspace rather than editing resource files. Save local
-values in the ignored `.databricks/bundle/dev/variable-overrides.json`, for example:
+`lakebase_project`, `lakebase_branch`, and `evaluation_warehouse_id` are required
+workspace-specific values. Save them in the ignored
+`.databricks/bundle/dev/variable-overrides.json`, together with any other overrides.
+Replace the placeholders in this example before using it:
 
 ```json
 {
-  "app_name": "clinical-extractor"
+  "app_name": "clinical-extractor",
+  "catalog": "<catalog>",
+  "schema": "<schema>",
+  "lakebase_project": "<project-id>",
+  "lakebase_branch": "<branch-id>",
+  "lakebase_database": "<database-id>",
+  "evaluation_warehouse_id": "<warehouse-id>",
+  "hf_secret_scope": "<secret-scope>"
 }
 ```
 
-Use the current app name when continuing an existing deployment; the original FEVM
-app is `clinical-extractor`. For a new app, use a distinct name containing only lowercase
+For CI, supply the same settings through `BUNDLE_VAR_<variable-name>` environment
+variables. Keep secret values in Databricks secret scopes; the bundle contains only
+the scope and key names.
+
+Use the current app name when continuing an existing deployment. For a new app,
+use a distinct name containing only lowercase
 letters, digits, and hyphens, at most 30 characters long. Shorten `app_name` locally if
 the identity-based default exceeds that limit. New non-production targets sharing a
 workspace should use distinct app names.
@@ -58,23 +77,23 @@ Run these commands from the repository root:
 ```bash
 npm --prefix src/app/frontend ci
 npm --prefix src/app/frontend run build
-databricks bundle validate --strict --target dev --profile FEVM
-databricks bundle plan --select apps.clinical_extractor,experiments.clinical_extractor_evaluations --target dev --profile FEVM
-databricks bundle deploy --select apps.clinical_extractor,experiments.clinical_extractor_evaluations --target dev --profile FEVM
-databricks bundle run clinical_extractor --target dev --profile FEVM
+databricks bundle validate --strict --target dev
+databricks bundle plan --select apps.clinical_extractor,experiments.clinical_extractor_evaluations --target dev
+databricks bundle deploy --select apps.clinical_extractor,experiments.clinical_extractor_evaluations --target dev
+databricks bundle run clinical_extractor --target dev
 ```
 
 The targeted deployment includes the experiment referenced by the app. Review the
 plan before applying it. `bundle deploy` uploads the code and configuration;
 `bundle run clinical_extractor` starts a fresh app deployment. To deploy the model-job
-definitions as well, run `databricks bundle deploy --target dev --profile FEVM`.
+definitions as well, run `databricks bundle deploy --target dev`.
 Deploying job definitions does not run the jobs.
 Use a full bundle plan and deployment after changing notebook paths so existing
 jobs reference the uploaded locations; a targeted app deployment skips job updates.
 
 ```bash
-databricks bundle plan --target dev --profile FEVM
-databricks bundle deploy --target dev --profile FEVM
+databricks bundle plan --target dev
+databricks bundle deploy --target dev
 ```
 
 The app's Postgres resource binding injects `PG*` connection settings;
@@ -110,7 +129,7 @@ in the backend terminal:
 
 ```bash
 cd src/app
-DATABRICKS_CONFIG_PROFILE=FEVM uvicorn main:app --reload --port 8000
+uvicorn main:app --reload --port 8000
 ```
 
 ```bash
@@ -138,8 +157,8 @@ Registration and Serverless GPU batch inference share model weights under
 these jobs; the app itself does not require it:
 
 ```sql
-CREATE VOLUME IF NOT EXISTS pavan_naidu_catalog.mlops.model_weights;
-CREATE VOLUME IF NOT EXISTS pavan_naidu_catalog.mlops.ray_data;
+CREATE VOLUME IF NOT EXISTS <catalog>.<schema>.model_weights;
+CREATE VOLUME IF NOT EXISTS <catalog>.<schema>.ray_data;
 ```
 
 After deploying job definitions, choose a pipeline:
@@ -151,7 +170,7 @@ After deploying job definitions, choose a pipeline:
 | Batch | `prepare_batch_input` → `batch_inference_udf` or `batch_inference_sgc` |
 | Fine-tuning | `finetune_medgemma` or `finetune_qwen3_disease` |
 
-Run each job with `databricks bundle run <job-key> --target dev --profile FEVM`.
+Run each job with `databricks bundle run <job-key> --target dev`.
 Batch inference requires `medgemma_register` first: the UDF path loads its registered
 model under the `challenger` alias, and the SGC path reads its saved weights.
 Keep `workload_type` aligned between endpoint deployment, benchmark, and UDF jobs;
@@ -180,6 +199,26 @@ Bundle sync excludes documentation, showcase files, frontend source, and tests
 from workspace uploads; it deploys the built app assets and model notebooks.
 Rebuild the frontend before deployment.
 
+## Python dependency locks
+
+`src/app/requirements.in` and `requirements-dev.in` contain exact direct dependency
+pins. The generated `requirements.txt` and `requirements-dev.txt` also pin every
+transitive dependency, with platform markers for Python 3.12 on local and deployed
+environments. Databricks Apps installs the runtime `requirements.txt` directly.
+Notebook installation cells and model-serving requirements use their own exact
+pins because their GPU runtimes differ from the web app.
+
+After intentionally changing a direct pin, regenerate both locks in order with uv:
+
+```bash
+uv pip compile src/app/requirements.in --python-version 3.12 --universal --output-file src/app/requirements.txt
+uv pip compile src/app/requirements-dev.in --python-version 3.12 --universal --output-file src/app/requirements-dev.txt
+```
+
+The development input constrains shared packages to the runtime lock. Install the
+development lock into a clean Python 3.12 virtual environment and run the checks
+below before sharing dependency updates.
+
 ## Validation
 
 With the virtual environment active, run from the repository root:
@@ -188,7 +227,7 @@ With the virtual environment active, run from the repository root:
 python -m pytest tests src/app/tests -q
 npm --prefix src/app/frontend run typecheck
 npm --prefix src/app/frontend run build
-databricks bundle validate --strict --target dev --profile FEVM
+databricks bundle validate --strict --target dev
 ```
 
 Backend tests use fakes for Databricks and database calls. The model tests cover

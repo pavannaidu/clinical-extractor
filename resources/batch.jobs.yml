@@ -45,6 +45,7 @@ resources:
               workload_type: "{{job.parameters.workload_type}}"
               input_table: "medgemma_batch_input"
               output_table: "medgemma_batch_output"
+              experiment_name: ${var.batch_experiment_name}
 
     batch_inference_sgc:
       name: "[medgemma/batch] 3. Batch Inference (SGC)"

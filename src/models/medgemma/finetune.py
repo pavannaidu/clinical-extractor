@@ -17,19 +17,21 @@
 # MAGIC
 # MAGIC ## Prerequisites
 # MAGIC - GPU cluster (A10 or better — QLoRA 4-bit fits in ~15 GB VRAM)
-# MAGIC - Secret scope `pavan_naidu` with key `hf_token`
+# MAGIC - A Hugging Face token in the configured `hf_secret_scope` / `hf_secret_key` secret
 
 # COMMAND ----------
 
 # DBTITLE 1,Widgets
 dbutils.widgets.removeAll()
-dbutils.widgets.text("catalog", "pavan_naidu_catalog", "Catalog")
+dbutils.widgets.text("catalog", "main", "Catalog")
 dbutils.widgets.text("schema", "mlops", "Schema")
 dbutils.widgets.text("registered_model_name", "medgemma_xgrammar_finetuned", "Registered Model Name")
 dbutils.widgets.text("endpoint_name", "medgemma-finetuned-endpoint", "Endpoint Name")
 dbutils.widgets.dropdown("workload_type", "GPU_MEDIUM", ["GPU_SMALL", "GPU_MEDIUM", "GPU_LARGE"], "Workload Type")
 dbutils.widgets.dropdown("scale_to_zero", "true", ["true", "false"], "Scale to Zero")
 dbutils.widgets.text("hf_model_name", "google/medgemma-1.5-4b-it", "HuggingFace Model Name")
+dbutils.widgets.text("hf_secret_scope", "clinical-extractor", "Hugging Face Secret Scope")
+dbutils.widgets.text("hf_secret_key", "hf_token", "Hugging Face Secret Key")
 dbutils.widgets.text("lora_rank", "16", "LoRA Rank")
 dbutils.widgets.text("lora_alpha", "32", "LoRA Alpha")
 dbutils.widgets.text("num_epochs", "3", "Training Epochs")
@@ -48,7 +50,7 @@ dbutils.widgets.text("num_training_examples", "50", "Examples per Category")
 # DBTITLE 1,Install Dependencies
 # MAGIC %pip install "peft==0.14.0" "trl==0.16.1" "bitsandbytes==0.46.1" "datasets==3.6.0" \
 # MAGIC   "transformers==4.53.3" "accelerate==1.4.0" "xgrammar==0.1.31" \
-# MAGIC   huggingface_hub hf_transfer "mlflow==3.12.0" "databricks-sdk==0.96.0" "openai==2.17.0"
+# MAGIC   "huggingface_hub==0.36.2" "hf_transfer==0.1.9" "mlflow==3.12.0" "databricks-sdk==0.96.0" "openai==2.17.0"
 
 # COMMAND ----------
 
@@ -128,7 +130,10 @@ import pathlib
 from huggingface_hub import snapshot_download
 
 os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
-hf_token = dbutils.secrets.get(scope="pavan_naidu", key="hf_token")
+hf_token = dbutils.secrets.get(
+    scope=dbutils.widgets.get("hf_secret_scope"),
+    key=dbutils.widgets.get("hf_secret_key"),
+)
 
 snapshot_download(
     repo_id=HF_MODEL_NAME,

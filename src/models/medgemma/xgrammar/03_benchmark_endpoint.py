@@ -14,7 +14,7 @@
 
 # DBTITLE 1,Widgets
 dbutils.widgets.removeAll()
-dbutils.widgets.text("catalog",              "pavan_naidu_catalog",          "Catalog")
+dbutils.widgets.text("catalog",              "main",          "Catalog")
 dbutils.widgets.text("schema",               "mlops",                        "Schema")
 dbutils.widgets.text("endpoint_name",        "medgemma-xgrammar-endpoint",   "Endpoint Name")
 dbutils.widgets.dropdown("workload_type", "GPU_MEDIUM", ["GPU_SMALL", "GPU_MEDIUM", "GPU_LARGE", "CPU"], "Workload Type")
@@ -23,6 +23,7 @@ dbutils.widgets.text("num_rows",             "200",                          "Ro
 dbutils.widgets.text("request_batch_size",   "1",                            "Rows per HTTP request")
 dbutils.widgets.text("concurrency_levels",   "1,4",                          "Concurrency levels to sweep (comma-separated)")
 dbutils.widgets.text("warmup_requests",      "2",                            "Warm-up requests before each level")
+dbutils.widgets.text("experiment_name", "", "MLflow Experiment Name (blank = current user)")
 
 # COMMAND ----------
 
@@ -46,7 +47,10 @@ CONCURRENCY_LEVELS  = [int(x.strip()) for x in dbutils.widgets.get("concurrency_
 WARMUP_REQUESTS     = int(dbutils.widgets.get("warmup_requests"))
 
 INPUT_TABLE_FQN  = f"{CATALOG}.{SCHEMA_NAME}.{INPUT_TABLE}"
-MLFLOW_EXPERIMENT_ID = "2468185612186458"
+EXPERIMENT_NAME = dbutils.widgets.get("experiment_name").strip() or (
+    f"/Users/{dbutils.notebook.entry_point.getDbutils().notebook().getContext().userName().get()}/medgemma-xgrammar"
+)
+MLFLOW_EXPERIMENT_ID = mlflow.set_experiment(EXPERIMENT_NAME).experiment_id
 
 _token   = dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiToken().get()
 _host    = dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiUrl().get()
@@ -319,8 +323,7 @@ with mlflow.start_run(
         })
 
     print(f"\n✓ MLflow parent run: {parent_run.info.run_id}")
-    print(f"  Experiment: https://fevm-pavan-naidu.cloud.databricks.com"
-          f"/?o=7474645380671326#/experiments/{MLFLOW_EXPERIMENT_ID}"
+    print(f"  Experiment: {_host.rstrip('/')}/ml/experiments/{MLFLOW_EXPERIMENT_ID}"
           f"/runs/{parent_run.info.run_id}")
 
 failed_requests = sum(m["error_count"] for m in all_metrics)

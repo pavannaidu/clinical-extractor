@@ -16,10 +16,12 @@
 
 # DBTITLE 1,Widgets
 dbutils.widgets.removeAll()
-dbutils.widgets.text("catalog", "pavan_naidu_catalog", "Catalog")
+dbutils.widgets.text("catalog", "main", "Catalog")
 dbutils.widgets.text("schema", "mlops", "Schema")
 dbutils.widgets.text("registered_model_name", "medgemma_xgrammar_structured", "Registered Model Name")
 dbutils.widgets.text("hf_model_name", "google/medgemma-1.5-4b-it", "HuggingFace Model Name")
+dbutils.widgets.text("hf_secret_scope", "clinical-extractor", "Hugging Face Secret Scope")
+dbutils.widgets.text("hf_secret_key", "hf_token", "Hugging Face Secret Key")
 
 # COMMAND ----------
 
@@ -29,8 +31,8 @@ dbutils.widgets.text("hf_model_name", "google/medgemma-1.5-4b-it", "HuggingFace 
 # MAGIC   "accelerate==1.4.0" \
 # MAGIC   "bitsandbytes==0.46.1" \
 # MAGIC   "xgrammar==0.1.31" \
-# MAGIC   "huggingface_hub" \
-# MAGIC   "hf_transfer" \
+# MAGIC   "huggingface_hub==0.36.2" \
+# MAGIC   "hf_transfer==0.1.9" \
 # MAGIC   "mlflow==3.12.0" \
 # MAGIC   "databricks-sdk==0.96.0"
 
@@ -76,7 +78,10 @@ print(f"Working dir : {pwd}")
 import pathlib
 from huggingface_hub import snapshot_download
 
-hf_token = dbutils.secrets.get(scope="pavan_naidu", key="hf_token")
+hf_token = dbutils.secrets.get(
+    scope=dbutils.widgets.get("hf_secret_scope"),
+    key=dbutils.widgets.get("hf_secret_key"),
+)
 
 snapshot_download(
     repo_id=HF_MODEL_NAME,

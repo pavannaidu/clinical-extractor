@@ -12,7 +12,7 @@
 
 # DBTITLE 1,Widgets
 dbutils.widgets.removeAll()
-dbutils.widgets.text("catalog", "pavan_naidu_catalog", "Catalog")
+dbutils.widgets.text("catalog", "main", "Catalog")
 dbutils.widgets.text("schema", "mlops", "Schema")
 dbutils.widgets.text("registered_model_name", "medgemma_xgrammar_structured", "Registered Model Name")
 dbutils.widgets.text("model_version", "", "Model Version (leave blank for latest)")

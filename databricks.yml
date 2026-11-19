@@ -19,11 +19,9 @@ variables:
     description: Databricks App name (lowercase letters, digits and hyphens; at most 30 characters).
     default: clinical-${workspace.current_user.domain_friendly_name}
   lakebase_project:
-    description: Existing Lakebase project ID.
-    default: 346167b8-965a-40af-a581-ac58f668b949
+    description: Existing Lakebase project ID; supply in local overrides or BUNDLE_VAR_lakebase_project.
   lakebase_branch:
-    description: Existing Lakebase branch ID within the project.
-    default: br-muddy-snow-d2go89fq
+    description: Existing Lakebase branch ID; supply in local overrides or BUNDLE_VAR_lakebase_branch.
   lakebase_database:
     description: Existing Lakebase database ID within the branch.
     default: clinical-extractor
@@ -34,9 +32,15 @@ variables:
     description: MLflow experiment used by the Serverless GPU batch job.
     default: /Users/${workspace.current_user.userName}/medgemma-xgrammar
   catalog:
-    default: pavan_naidu_catalog
+    default: main
   schema:
     default: mlops
+  hf_secret_scope:
+    description: Databricks secret scope containing the Hugging Face token.
+    default: clinical-extractor
+  hf_secret_key:
+    description: Secret key within hf_secret_scope.
+    default: hf_token
 
   # MedGemma serving
   medgemma_registered_model_name:
@@ -60,12 +64,10 @@ variables:
   qwen3_finetuned_endpoint_name:
     default: qwen3-4b-finetuned-vllm-endpoint
   evaluation_warehouse_id:
-    default: fb3b5c1dee0b9d55
+    description: Existing SQL warehouse ID; supply in local overrides or BUNDLE_VAR_evaluation_warehouse_id.
 
 targets:
   dev:
     mode: development
     default: true
-    workspace:
-      host: https://fevm-pavan-naidu.cloud.databricks.com
-      profile: FEVM
+    # Resolve the workspace through --profile or DATABRICKS_HOST and authentication.

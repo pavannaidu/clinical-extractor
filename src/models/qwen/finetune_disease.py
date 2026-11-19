@@ -16,7 +16,7 @@
 # COMMAND ----------
 
 # DBTITLE 1,Parameters
-dbutils.widgets.text("catalog", "pavan_naidu_catalog")
+dbutils.widgets.text("catalog", "main")
 dbutils.widgets.text("schema", "mlops")
 dbutils.widgets.text("registered_model_name", "qwen3_vllm_structured")
 dbutils.widgets.text("endpoint_name", "qwen3-4b-finetuned-vllm-endpoint")
@@ -33,8 +33,8 @@ dbutils.widgets.text("max_seq_length", "1024")
 # MAGIC %pip install "mlflow==3.12.0" "databricks-sdk==0.96.0" \
 # MAGIC   "torch==2.9.0" "torchvision==0.24.0" \
 # MAGIC   "transformers==4.57.6" "trl==0.24.0" \
-# MAGIC   "peft==0.18.0" "bitsandbytes==0.49.2" "datasets>=4,<5" \
-# MAGIC   "accelerate>=1.10,<2" "huggingface_hub>=0.34,<2"
+# MAGIC   "peft==0.18.0" "bitsandbytes==0.49.2" "datasets==4.8.5" \
+# MAGIC   "accelerate==1.16.0" "huggingface_hub==0.36.2"
 
 # COMMAND ----------
 
@@ -356,7 +356,7 @@ model_info = mlflow.pyfunc.log_model(
         "mlflow==3.12.0",
         "vllm==0.11.2",
         "transformers==4.57.6",
-        "opencv-python-headless==4.12.*",
+        "opencv-python-headless==4.12.0.88",
     ],
 )
 model_client = mlflow.MlflowClient()

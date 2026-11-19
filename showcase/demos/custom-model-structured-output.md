@@ -25,7 +25,7 @@ MedGemma is an optional medical pretrained model comparison. Its XGrammar path i
 
 ## Suggested Steps
 
-1. Create the Unity Catalog volume `<catalog>.<schema>.model_weights` if it does not already exist (`pavan_naidu_catalog.mlops.model_weights` for the default target).
+1. Create the Unity Catalog volume `<catalog>.<schema>.model_weights` in the configured namespace if it does not already exist.
 2. Register MedGemma as an MLflow model in Unity Catalog.
 3. Deploy the endpoint.
 4. Pick a workload pack from `../workloads`.

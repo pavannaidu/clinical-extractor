@@ -1,0 +1,5 @@
+# Share the runtime lock's exact versions when resolving development tools.
+-c requirements.txt
+-r requirements.in
+pytest==9.2.0
+httpx==0.28.1

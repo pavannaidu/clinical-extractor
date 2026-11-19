@@ -15,7 +15,7 @@
 
 # DBTITLE 1,Widgets
 dbutils.widgets.removeAll()
-dbutils.widgets.text("catalog", "pavan_naidu_catalog", "Catalog")
+dbutils.widgets.text("catalog", "main", "Catalog")
 dbutils.widgets.text("schema", "mlops", "Schema")
 dbutils.widgets.text("registered_model_name", "qwen3_vllm_structured", "Registered Model Name")
 dbutils.widgets.text("endpoint_name", "qwen3-4b-vllm-endpoint", "Endpoint Name")
@@ -40,7 +40,7 @@ dbutils.widgets.text("hf_model_name", "Qwen/Qwen3-4B-Instruct-2507", "HuggingFac
 # MAGIC   transformers==4.57.6 \
 # MAGIC   hf_transfer==0.1.9 \
 # MAGIC   openai==2.17.0 \
-# MAGIC   opencv-python-headless==4.12.*
+# MAGIC   opencv-python-headless==4.12.0.88
 
 # COMMAND ----------
 
@@ -393,7 +393,7 @@ model_info = mlflow.pyfunc.log_model(
         "mlflow==3.12.0",
         "vllm==0.11.2",
         "transformers==4.57.6",
-        "opencv-python-headless==4.12.*",
+        "opencv-python-headless==4.12.0.88",
     ],
 )
 

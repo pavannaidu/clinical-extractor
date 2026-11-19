@@ -31,7 +31,7 @@
 
 # DBTITLE 1,Widgets
 dbutils.widgets.removeAll()
-dbutils.widgets.text("catalog",               "pavan_naidu_catalog",            "Catalog")
+dbutils.widgets.text("catalog",               "main",            "Catalog")
 dbutils.widgets.text("schema",                "mlops",                          "Schema")
 dbutils.widgets.text("registered_model_name", "medgemma_xgrammar_structured",   "Registered Model Name")
 dbutils.widgets.text("model_alias",           "challenger",                     "Model Alias")
@@ -47,6 +47,7 @@ dbutils.widgets.text("output_table",          "medgemma_batch_output",          
 dbutils.widgets.text("batch_size",            "32",                             "Rows per Spark partition (batch size)")
 dbutils.widgets.text("output_table_udf",      "medgemma_batch_output_udf",      "UDF Output Delta Table")
 dbutils.widgets.text("pandas_predict_batch_size", "32",                         "Rows per pandas predict chunk")
+dbutils.widgets.text("experiment_name", "", "MLflow Experiment Name (blank = current user)")
 
 # COMMAND ----------
 
@@ -56,7 +57,7 @@ dbutils.widgets.text("pandas_predict_batch_size", "32",                         
   "accelerate==1.4.0" \
   "bitsandbytes==0.46.1" \
   xgrammar==0.1.31 \
-  huggingface_hub "mlflow==3.12.0" "databricks-sdk==0.96.0"
+  "huggingface_hub==0.36.2" "mlflow==3.12.0" "databricks-sdk==0.96.0"
 
 # COMMAND ----------
 
@@ -92,10 +93,13 @@ INPUT_TABLE_FQN      = f"{CATALOG}.{SCHEMA_NAME}.{INPUT_TABLE}"
 OUTPUT_TABLE_FQN     = f"{CATALOG}.{SCHEMA_NAME}.{OUTPUT_TABLE}"
 OUTPUT_TABLE_UDF_FQN = f"{CATALOG}.{SCHEMA_NAME}.{OUTPUT_TABLE_UDF}"
 
-MLFLOW_EXPERIMENT_ID = "2468185612186458"
+EXPERIMENT_NAME = dbutils.widgets.get("experiment_name").strip() or (
+    f"/Users/{dbutils.notebook.entry_point.getDbutils().notebook().getContext().userName().get()}/medgemma-xgrammar"
+)
 
 import mlflow
 mlflow.set_registry_uri("databricks-uc")
+MLFLOW_EXPERIMENT_ID = mlflow.set_experiment(EXPERIMENT_NAME).experiment_id
 
 # Module-level timing variables (populated by inference cells)
 pandas_elapsed: float = 0.0

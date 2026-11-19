@@ -10,7 +10,7 @@
 
 # DBTITLE 1,Widgets
 dbutils.widgets.removeAll()
-dbutils.widgets.text("catalog", "pavan_naidu_catalog", "Catalog")
+dbutils.widgets.text("catalog", "main", "Catalog")
 dbutils.widgets.text("schema", "mlops", "Schema")
 dbutils.widgets.text("input_table", "medgemma_batch_input", "Input Delta Table")
 dbutils.widgets.text("synthetic_replications", "50", "Synthetic input replications")

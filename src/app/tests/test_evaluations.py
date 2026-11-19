@@ -118,7 +118,7 @@ def test_user_query_uses_only_forwarded_user_token(monkeypatch):
                     )
                 ),
                 result=SimpleNamespace(
-                    data_array=[["pavan_naidu_catalog"]],
+                    data_array=[["demo_catalog"]],
                     next_chunk_index=None,
                 ),
             )
@@ -134,7 +134,7 @@ def test_user_query_uses_only_forwarded_user_token(monkeypatch):
 
     rows = evaluations._execute_user_query("forwarded-token", "SHOW CATALOGS")
 
-    assert rows == [{"catalog": "pavan_naidu_catalog"}]
+    assert rows == [{"catalog": "demo_catalog"}]
     assert captured == {
         "host": "https://workspace",
         "token": "forwarded-token",

@@ -18,6 +18,8 @@ resources:
               schema: ${var.schema}
               registered_model_name: ${var.medgemma_registered_model_name}
               hf_model_name: "google/medgemma-1.5-4b-it"
+              hf_secret_scope: ${var.hf_secret_scope}
+              hf_secret_key: ${var.hf_secret_key}
 
     medgemma_deploy:
       name: "[medgemma] 2. Deploy Endpoint"
@@ -75,3 +77,4 @@ resources:
               request_batch_size: "1"
               concurrency_levels: "1,4"
               warmup_requests: "10"
+              experiment_name: ${var.batch_experiment_name}

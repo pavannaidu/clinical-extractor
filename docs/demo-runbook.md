@@ -68,32 +68,32 @@ Pick one:
 ## Demo Commands
 
 ```bash
-databricks bundle validate --strict --target dev --profile FEVM
-databricks bundle plan --select apps.clinical_extractor,experiments.clinical_extractor_evaluations --target dev --profile FEVM
-databricks bundle deploy --select apps.clinical_extractor,experiments.clinical_extractor_evaluations --target dev --profile FEVM
-databricks bundle run clinical_extractor --target dev --profile FEVM
+databricks bundle validate --strict --target dev
+databricks bundle plan --select apps.clinical_extractor,experiments.clinical_extractor_evaluations --target dev
+databricks bundle deploy --select apps.clinical_extractor,experiments.clinical_extractor_evaluations --target dev
+databricks bundle run clinical_extractor --target dev
 ```
 
 Optional runnable flows:
 
 Before running registration or the Serverless GPU batch flow, ensure the Unity
-Catalog volume `<catalog>.<schema>.model_weights` exists. The default is
-`pavan_naidu_catalog.mlops.model_weights`.
+Catalog volume `<catalog>.<schema>.model_weights` exists in the namespace configured
+by the bundle variables.
 
 ```bash
-databricks bundle run medgemma_register  --profile FEVM
-databricks bundle run medgemma_deploy    --profile FEVM
-databricks bundle run medgemma_benchmark --profile FEVM
+databricks bundle run medgemma_register
+databricks bundle run medgemma_deploy
+databricks bundle run medgemma_benchmark
 ```
 
 ```bash
-databricks bundle run prepare_batch_input --profile FEVM
-databricks bundle run batch_inference_udf --profile FEVM
+databricks bundle run prepare_batch_input
+databricks bundle run batch_inference_udf
 ```
 
 ```bash
-databricks bundle run inference_vllm_qwen --profile FEVM
-databricks bundle run finetune_qwen3_disease --profile FEVM
+databricks bundle run inference_vllm_qwen
+databricks bundle run finetune_qwen3_disease
 ```
 
 The [source guide](../src/README.md) lists the optional MedGemma fine-tuning and

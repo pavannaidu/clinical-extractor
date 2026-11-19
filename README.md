@@ -24,16 +24,16 @@ Schema-valid JSON establishes output shape; clinical accuracy still needs review
 
 ## Run it
 
-The default target is the FEVM workspace. Follow [setup and operations](docs/setup.md)
-to configure Databricks authentication, app resource bindings, and model-job prerequisites.
+Follow [setup and operations](docs/setup.md) to select your workspace through a CLI
+profile or environment variables, configure app bindings, and prepare model jobs.
 
 ```bash
 npm --prefix src/app/frontend ci
 npm --prefix src/app/frontend run build
-databricks bundle validate --strict --target dev --profile FEVM
-databricks bundle plan --select apps.clinical_extractor,experiments.clinical_extractor_evaluations --target dev --profile FEVM
-databricks bundle deploy --select apps.clinical_extractor,experiments.clinical_extractor_evaluations --target dev --profile FEVM
-databricks bundle run clinical_extractor --target dev --profile FEVM
+databricks bundle validate --strict --target dev
+databricks bundle plan --select apps.clinical_extractor,experiments.clinical_extractor_evaluations --target dev
+databricks bundle deploy --select apps.clinical_extractor,experiments.clinical_extractor_evaluations --target dev
+databricks bundle run clinical_extractor --target dev
 ```
 
 ## Repository guide

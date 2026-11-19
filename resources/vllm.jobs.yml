@@ -21,6 +21,8 @@ resources:
               workload_type: "GPU_MEDIUM"
               scale_to_zero: "true"
               hf_model_name: "google/medgemma-1.5-4b-it"
+              hf_secret_scope: ${var.hf_secret_scope}
+              hf_secret_key: ${var.hf_secret_key}
 
     inference_vllm_qwen:
       name: "[qwen/vllm] Custom LLM Serving (vLLM)"

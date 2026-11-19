@@ -6,24 +6,26 @@ MedGemma/Qwen vLLM serving, batch inference, QLoRA fine-tuning, and a FastAPI/Re
 ## Configuration and commands
 
 - Bundle name: `medgemma`; default target: `dev` in development mode.
-- Default workspace: `fevm-pavan-naidu.cloud.databricks.com`, profile `FEVM`.
+- Select the workspace through `--profile` or `DATABRICKS_CONFIG_PROFILE` /
+  `DATABRICKS_HOST`; shared configuration contains no workspace URL.
 - `databricks.yml` owns variables and targets. `resources/*.yml` owns resource
   definitions, with paths relative to those files (`../src/...`).
 - Keep bundle name and resource keys stable to preserve deployment state.
 - App names use `app_name`; existing checkouts can preserve `clinical-extractor`
   through ignored `.databricks/bundle/dev/variable-overrides.json`.
-- Existing catalog, schema, Lakebase IDs, and evaluation warehouse defaults are
-  centralized in `databricks.yml`. Setup details: [docs/setup.md](docs/setup.md).
+- Lakebase project/branch and evaluation warehouse IDs must be supplied through
+  ignored local bundle overrides or `BUNDLE_VAR_*`. Existing local deployment
+  values stay in `.databricks/`. Setup details: [docs/setup.md](docs/setup.md).
 
 ```bash
-databricks bundle validate --strict --target dev --profile FEVM
-databricks bundle deploy --target dev --profile FEVM
-databricks bundle run <job-key> --target dev --profile FEVM
+databricks bundle validate --strict --target dev
+databricks bundle deploy --target dev
+databricks bundle run <job-key> --target dev
 
 # App and its evaluation experiment: review, deploy, then start.
-databricks bundle plan --select apps.clinical_extractor,experiments.clinical_extractor_evaluations --target dev --profile FEVM
-databricks bundle deploy --select apps.clinical_extractor,experiments.clinical_extractor_evaluations --target dev --profile FEVM
-databricks bundle run clinical_extractor --target dev --profile FEVM
+databricks bundle plan --select apps.clinical_extractor,experiments.clinical_extractor_evaluations --target dev
+databricks bundle deploy --select apps.clinical_extractor,experiments.clinical_extractor_evaluations --target dev
+databricks bundle run clinical_extractor --target dev
 ```
 
 Job keys by resource file:
@@ -45,7 +47,7 @@ npm --prefix src/app/frontend run dev
 npm --prefix src/app/frontend run typecheck
 npm --prefix src/app/frontend run build
 # In a separate terminal:
-cd src/app && DATABRICKS_CONFIG_PROFILE=FEVM uvicorn main:app --reload --port 8000
+cd src/app && uvicorn main:app --reload --port 8000
 ```
 
 - Edit `src/app/frontend/src/` and `frontend/public/`; rebuild tracked `static/`
@@ -93,9 +95,9 @@ cd src/app && DATABRICKS_CONFIG_PROFILE=FEVM uvicorn main:app --reload --port 80
 - Create `<catalog>.<schema>.model_weights` before registration or SGC batch
   inference. The bundle does not create that Unity Catalog volume.
 - Batch notebooks set the `databricks-uc` registry URI; avoid duplicate resets.
-  Historical benchmark notebooks use MLflow experiment `2468185612186458`;
-  app evaluations use their bound experiment instead.
-- MedGemma downloads use Databricks secret `pavan_naidu/hf_token`.
+  Batch and benchmark notebooks use `batch_experiment_name`; interactive runs
+  default to the current user's experiment. App evaluations use their bound experiment.
+- MedGemma downloads use `hf_secret_scope` / `hf_secret_key` Databricks secrets.
 - The UDF job uses two `g5.2xlarge` workers by default; Serverless GPU jobs
   request `GPU_1xA10` directly.
 - The classic job uses 17.3 LTS ML GPU and checks one SQL endpoint request before

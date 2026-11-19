@@ -11,7 +11,7 @@ see [setup](../setup.md) for the current deployment.
 | Revision | `e9792da5fb8ee651083d345ec4bce07c3c9f1641` |
 | Dtype | `bfloat16` · no quantization |
 | Constrained generation | XGrammar (JSON schema → LogitsProcessor) |
-| Registered model | `pavan_naidu.mlops.medgemma_xgrammar_structured` |
+| Registered model | `<catalog>.<schema>.medgemma_xgrammar_structured` |
 | Endpoint | `medgemma-xgrammar-endpoint` |
 
 ## Inference Config by Version

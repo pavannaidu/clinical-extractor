@@ -16,13 +16,13 @@
 # MAGIC
 # MAGIC ## Prerequisites
 # MAGIC - GPU cluster (A10 or better)
-# MAGIC - Secret scope `pavan_naidu` with key `hf_token`
+# MAGIC - A Hugging Face token in the configured `hf_secret_scope` / `hf_secret_key` secret
 
 # COMMAND ----------
 
 # DBTITLE 1,Widgets
 dbutils.widgets.removeAll()
-dbutils.widgets.text("catalog", "pavan_naidu_catalog", "Catalog")
+dbutils.widgets.text("catalog", "main", "Catalog")
 dbutils.widgets.text("schema", "mlops", "Schema")
 dbutils.widgets.text("registered_model_name", "medgemma_vllm_structured", "Registered Model Name")
 dbutils.widgets.text("endpoint_name", "medgemma-1-5-4b-vllm-endpoint", "Endpoint Name")
@@ -30,6 +30,8 @@ dbutils.widgets.dropdown("workload_type", "GPU_MEDIUM", ["GPU_SMALL", "GPU_MEDIU
 dbutils.widgets.dropdown("workload_size", "Small", ["Small", "Medium", "Large"], "Workload Size")
 dbutils.widgets.dropdown("scale_to_zero", "true", ["true", "false"], "Scale to Zero")
 dbutils.widgets.text("hf_model_name", "google/medgemma-1.5-4b-it", "HuggingFace Model Name")
+dbutils.widgets.text("hf_secret_scope", "clinical-extractor", "Hugging Face Secret Scope")
+dbutils.widgets.text("hf_secret_key", "hf_token", "Hugging Face Secret Key")
 
 # COMMAND ----------
 
@@ -47,7 +49,7 @@ dbutils.widgets.text("hf_model_name", "google/medgemma-1.5-4b-it", "HuggingFace 
 # MAGIC   transformers==4.57.6 \
 # MAGIC   hf_transfer==0.1.9 \
 # MAGIC   openai==2.17.0 \
-# MAGIC   opencv-python-headless==4.12.*
+# MAGIC   opencv-python-headless==4.12.0.88
 
 # COMMAND ----------
 
@@ -129,7 +131,10 @@ import pathlib
 from huggingface_hub import snapshot_download
 
 os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
-hf_token = dbutils.secrets.get(scope="pavan_naidu", key="hf_token")
+hf_token = dbutils.secrets.get(
+    scope=dbutils.widgets.get("hf_secret_scope"),
+    key=dbutils.widgets.get("hf_secret_key"),
+)
 
 snapshot_download(
     repo_id=HF_MODEL_NAME,
@@ -647,7 +652,7 @@ model_info = mlflow.pyfunc.log_model(
         "mlflow==3.12.0",
         "vllm==0.11.2",
         "transformers==4.57.6",
-        "opencv-python-headless==4.12.*",
+        "opencv-python-headless==4.12.0.88",
     ],
 )
 

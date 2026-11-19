@@ -838,11 +838,20 @@ html:not(.js) .slide {
 /* Slide 2 — progressive decision ladder. */
 
 .decision-ladder {
+  position: relative;
+  z-index: 1;
   display: grid;
-  margin-top: 28px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   border-top: 1px solid var(--db-line);
   border-bottom: 1px solid var(--db-line);
+}
+
+.decision-visual {
+  position: relative;
+  isolation: isolate;
+  margin-top: 28px;
+  padding-bottom: 58px;
+  overflow: hidden;
 }
 
 .decision-step {
@@ -853,6 +862,7 @@ html:not(.js) .slide {
   grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 18px;
   border-left: 1px solid var(--db-line);
+  background: rgb(249 247 244 / 76%);
 }
 
 .decision-step:last-child { border-right: 1px solid var(--db-line); }
@@ -916,38 +926,41 @@ html:not(.js) .slide {
 }
 
 .complexity-ramp {
-  display: grid;
-  margin-top: 22px;
-  padding: 14px 20px 12px;
-  grid-template-columns: 330px minmax(0, 1fr);
-  gap: 24px;
-  align-items: center;
-  border: 1px solid var(--db-line);
-  background: var(--db-oat-strong);
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
 
-.complexity-ramp__title strong {
-  display: block;
+.complexity-ramp__curve {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.complexity-ramp__line {
+  stroke-width: 7;
+  vector-effect: non-scaling-stroke;
+}
+
+.complexity-ramp__title {
+  position: absolute;
+  z-index: 1;
+  bottom: 27px;
+  left: 20px;
   color: var(--db-navy);
-  font-size: 15px;
-}
-
-.complexity-ramp__title span {
-  color: var(--db-ink-muted);
-  font-family: var(--db-font-mono);
-  font-size: 11px;
-  text-transform: uppercase;
-}
-
-.complexity-ramp__arrow {
-  height: 27px;
-  background: linear-gradient(90deg, rgb(27 81 98 / 36%), var(--db-coral) 72%, var(--db-lava));
-  clip-path: polygon(0 43%, 89% 10%, 89% 0, 100% 50%, 89% 100%, 89% 90%, 0 57%);
+  font-size: 14px;
 }
 
 .complexity-ramp__labels {
+  position: absolute;
+  z-index: 1;
+  right: 20px;
+  bottom: 8px;
+  left: 20px;
   display: grid;
-  margin-top: 4px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   color: var(--db-ink-muted);
   font-family: var(--db-font-mono);
@@ -1286,7 +1299,22 @@ body.reader-mode .separation-exhibit {
 
 body.reader-mode .thesis-copy { padding-right: 0; }
 body.reader-mode .prepared-by { margin-top: 40px; }
-body.reader-mode .complexity-ramp { grid-template-columns: 1fr; }
+body.reader-mode .decision-visual {
+  display: flex;
+  padding-bottom: 0;
+  overflow: visible;
+  flex-direction: column;
+}
+body.reader-mode .decision-ladder { order: 1; }
+body.reader-mode .complexity-ramp {
+  position: relative;
+  inset: auto;
+  order: 2;
+  min-height: 176px;
+  margin-top: 16px;
+  overflow: hidden;
+}
+body.reader-mode .complexity-ramp__title { top: 20px; bottom: auto; }
 body.reader-mode .status-sticker {
   position: static;
   align-self: flex-end;

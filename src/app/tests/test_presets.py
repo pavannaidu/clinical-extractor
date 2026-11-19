@@ -1,17 +1,10 @@
 import json
-import sys
 from contextlib import contextmanager
-from pathlib import Path
 from typing import Any
 
-
-APP_ROOT = Path(__file__).resolve().parents[1]
-if str(APP_ROOT) not in sys.path:
-    sys.path.insert(0, str(APP_ROOT))
-
-from api import database, routes  # noqa: E402
-from api.presets import PRESETS  # noqa: E402
-from api.schemas import Preset, PresetCreate  # noqa: E402
+from api import ai_extract, database, json_output, routes
+from api.presets import PRESETS
+from api.schemas import Preset, PresetCreate
 
 
 EXPECTED_PRESET_IDS = {
@@ -44,19 +37,22 @@ def _has_type(schema: dict[str, Any], expected_type: str) -> bool:
     return schema_type == expected_type
 
 
-def _assert_strict_objects(schema: dict[str, Any]) -> None:
+def _assert_sparse_schema(schema: dict[str, Any]) -> None:
+    schema_type = schema.get("type")
+    assert not isinstance(schema_type, list)
+
     if _has_type(schema, "object"):
         properties = schema.get("properties")
         assert isinstance(properties, dict)
         assert schema.get("additionalProperties") is False
-        assert schema.get("required") == list(properties.keys())
+        assert "required" not in schema
         for child in properties.values():
-            _assert_strict_objects(child)
+            _assert_sparse_schema(child)
 
     if _has_type(schema, "array"):
         items = schema.get("items")
         assert isinstance(items, dict)
-        _assert_strict_objects(items)
+        _assert_sparse_schema(items)
 
 
 def _assert_schema_descriptions(schema: dict[str, Any]) -> None:
@@ -180,11 +176,11 @@ def test_builtin_presets_satisfy_api_models_and_field_limits():
         assert len(create_model.system_prompt) <= 4_000
 
 
-def test_builtin_preset_schemas_are_strict_compatible():
+def test_builtin_preset_schemas_are_sparse_by_default():
     for preset in PRESETS:
         schema = json.loads(preset["schema_json"])
         assert schema["type"] == "object"
-        _assert_strict_objects(schema)
+        _assert_sparse_schema(schema)
 
 
 def test_builtin_preset_schema_fields_have_short_descriptions():
@@ -216,9 +212,24 @@ def test_only_evidence_heavy_presets_include_source_text():
 
 def test_builtin_presets_are_compatible_with_ai_extract():
     for preset in PRESETS:
-        converted = routes._convert_json_schema_for_ai_extract(preset["schema_json"])
+        converted = ai_extract.convert_json_schema_for_ai_extract(preset["schema_json"])
         assert converted.schema
         assert isinstance(converted.warnings, list)
+
+
+def test_unstated_scalar_details_are_optional_and_non_nullable():
+    schemas = {
+        preset["id"]: json.loads(preset["schema_json"])
+        for preset in PRESETS
+    }
+
+    medication = schemas["medication_extraction"]["properties"]["medications"]["items"]
+    diagnosis = schemas["diagnosis_extraction"]["properties"]["diagnoses"]["items"]
+    disease = schemas["disease_mention_extraction"]["properties"]["diseases"]["items"]
+
+    assert medication["properties"]["dosage"]["type"] == "string"
+    assert diagnosis["properties"]["certainty"]["type"] == "string"
+    assert disease["properties"]["negated"]["type"] == "boolean"
 
 
 def test_builtin_presets_build_requests_for_every_default_serving_model():
@@ -254,10 +265,11 @@ def test_builtin_presets_build_requests_for_every_default_serving_model():
             }
             if model["model_type"] == "fmapi":
                 sent_schema = payload["response_format"]["json_schema"]["schema"]
+                assert sent_schema == json_output.strict_response_schema(schema)
             else:
                 sent_schema = payload["guided_json"]
                 assert payload["guided_decoding_backend"] == "xgrammar:no-fallback"
-            assert sent_schema == schema
+                assert sent_schema == schema
 
 
 class _RecordingCursor:

@@ -22,5 +22,5 @@ This is a strong example of why unstructured outputs are not sufficient. Downstr
 
 ## Execution Layer
 
-- Domain model path: `src/medgemma`
-- Fine-tuning path: `src/finetune`
+- Domain model path: `src/models/medgemma/xgrammar`
+- Fine-tuning example: `src/models/medgemma/finetune.py`

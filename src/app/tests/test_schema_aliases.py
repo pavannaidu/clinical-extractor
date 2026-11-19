@@ -93,9 +93,6 @@ def test_schema_json_aliases_are_warning_free_and_preserve_the_wire_contract():
 
 
 def test_fastapi_openapi_uses_schema_json_for_aliased_route_fields():
-    if str(APP_ROOT) not in sys.path:
-        sys.path.insert(0, str(APP_ROOT))
-
     unsupported_field_warning = getattr(
         pydantic_warnings, "UnsupportedFieldAttributeWarning", None
     )
@@ -121,9 +118,6 @@ def test_fastapi_openapi_uses_schema_json_for_aliased_route_fields():
 
 
 def test_inference_route_accepts_schema_json_without_field_alias_warning(monkeypatch):
-    if str(APP_ROOT) not in sys.path:
-        sys.path.insert(0, str(APP_ROOT))
-
     from api import routes
     from fastapi.testclient import TestClient
     from main import app

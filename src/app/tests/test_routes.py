@@ -1,19 +1,12 @@
 import asyncio
 import json
-import sys
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
 
-
-APP_ROOT = Path(__file__).resolve().parents[1]
-if str(APP_ROOT) not in sys.path:
-    sys.path.insert(0, str(APP_ROOT))
-
-from api import routes  # noqa: E402
-from api.schemas import (  # noqa: E402
+from api import ai_extract, json_output, routes
+from api.schemas import (
     AiExtractOptions,
     InferenceRequest,
     LoadTestRequest,
@@ -363,7 +356,7 @@ def test_list_models_returns_visible_custom_models_and_ready_fmapi(monkeypatch):
         ),
         ("gpt-5-4-mini", "fmapi", routes.DEFAULT_MAX_TOKENS, None, "ready", None),
         (
-            routes.AI_EXTRACT_TARGET_ID,
+            ai_extract.AI_EXTRACT_TARGET_ID,
             "ai_extract",
             None,
             None,
@@ -443,7 +436,7 @@ def test_list_models_keeps_absent_custom_visible_and_uses_model_services(monkeyp
         ("gpt-5-4-mini", "fmapi", routes.DEFAULT_MAX_TOKENS, None, "ready", None),
         ("gpt-oss-20b", "fmapi", routes.DEFAULT_MAX_TOKENS, None, "ready", None),
         (
-            routes.AI_EXTRACT_TARGET_ID,
+            ai_extract.AI_EXTRACT_TARGET_ID,
             "ai_extract",
             None,
             None,
@@ -521,7 +514,7 @@ def test_list_models_marks_configured_models_unavailable_when_lookup_fails(monke
             routes.MODEL_AVAILABILITY_UNVERIFIED_MESSAGE,
         ),
         (
-            routes.AI_EXTRACT_TARGET_ID,
+            ai_extract.AI_EXTRACT_TARGET_ID,
             "ai_extract",
             None,
             None,
@@ -608,7 +601,7 @@ def test_list_models_falls_back_to_workspace_listing_when_config_missing(monkeyp
         ),
         ("gpt-5-4-mini", "fmapi", routes.DEFAULT_MAX_TOKENS, None, "ready", None),
         (
-            routes.AI_EXTRACT_TARGET_ID,
+            ai_extract.AI_EXTRACT_TARGET_ID,
             "ai_extract",
             None,
             None,
@@ -656,7 +649,7 @@ def test_build_ai_extract_request_converts_schema_and_explicit_options():
         "additionalProperties": False,
     }
 
-    path, payload, warnings = routes._build_ai_extract_request(
+    path, payload, warnings = ai_extract.build_ai_extract_request(
         prompt="Patient Ada Lovelace was seen on 2026-09-11.",
         schema_json=json.dumps(schema),
         system_prompt="Use only facts present in the note.",
@@ -665,7 +658,7 @@ def test_build_ai_extract_request_converts_schema_and_explicit_options():
         enable_confidence_scores=True,
     )
 
-    assert path == routes.AI_EXTRACT_PATH
+    assert path == ai_extract.AI_EXTRACT_PATH
     assert payload["content"].startswith("Patient Ada")
     assert payload["options"] == {
         "version": "2.1",
@@ -711,7 +704,7 @@ def test_ai_extract_options_and_payload_default_to_all_disabled():
         "enable_confidence_scores": False,
     }
 
-    path, payload, warnings = routes._build_ai_extract_request(
+    path, payload, warnings = ai_extract.build_ai_extract_request(
         prompt="Source text.",
         schema_json=json.dumps(
             {
@@ -723,7 +716,7 @@ def test_ai_extract_options_and_payload_default_to_all_disabled():
         precision=False,
     )
 
-    assert path == routes.AI_EXTRACT_PATH
+    assert path == ai_extract.AI_EXTRACT_PATH
     assert payload["options"] == {
         "version": "2.1",
         "enable_citations": False,
@@ -750,8 +743,8 @@ def test_ai_extract_schema_rejects_shape_changing_constructs(
         "properties": {"value": field_schema},
     }
 
-    with pytest.raises(routes._AiExtractSchemaError, match=expected_detail):
-        routes._convert_json_schema_for_ai_extract(json.dumps(schema))
+    with pytest.raises(ai_extract.AiExtractSchemaError, match=expected_detail):
+        ai_extract.convert_json_schema_for_ai_extract(json.dumps(schema))
 
 
 def test_ai_extract_schema_enforces_documented_limits():
@@ -759,11 +752,11 @@ def test_ai_extract_schema_enforces_documented_limits():
         "type": "object",
         "properties": {
             f"field_{index}": {"type": "string"}
-            for index in range(routes.AI_EXTRACT_MAX_FIELDS + 1)
+            for index in range(ai_extract.AI_EXTRACT_MAX_FIELDS + 1)
         },
     }
-    with pytest.raises(routes._AiExtractSchemaError, match="field limit"):
-        routes._convert_json_schema_for_ai_extract(json.dumps(too_many_fields))
+    with pytest.raises(ai_extract.AiExtractSchemaError, match="field limit"):
+        ai_extract.convert_json_schema_for_ai_extract(json.dumps(too_many_fields))
 
     enum_overflow = {
         "type": "object",
@@ -778,28 +771,28 @@ def test_ai_extract_schema_enforces_documented_limits():
             },
         },
     }
-    with pytest.raises(routes._AiExtractSchemaError, match="enum-value limit"):
-        routes._convert_json_schema_for_ai_extract(json.dumps(enum_overflow))
+    with pytest.raises(ai_extract.AiExtractSchemaError, match="enum-value limit"):
+        ai_extract.convert_json_schema_for_ai_extract(json.dumps(enum_overflow))
 
     nested = {"type": "string"}
-    for level in range(routes.AI_EXTRACT_MAX_DEPTH):
+    for level in range(ai_extract.AI_EXTRACT_MAX_DEPTH):
         nested = {
             "type": "object",
             "properties": {f"level_{level}": nested},
         }
     too_deep = {"type": "object", "properties": {"root": nested}}
-    with pytest.raises(routes._AiExtractSchemaError, match="nesting limit"):
-        routes._convert_json_schema_for_ai_extract(json.dumps(too_deep))
+    with pytest.raises(ai_extract.AiExtractSchemaError, match="nesting limit"):
+        ai_extract.convert_json_schema_for_ai_extract(json.dumps(too_deep))
 
 
 def test_ai_extract_instructions_limit_is_checked_before_api_call():
     schema = {
         "type": "object",
-        "description": "x" * routes.AI_EXTRACT_MAX_INSTRUCTIONS_LENGTH,
+        "description": "x" * ai_extract.AI_EXTRACT_MAX_INSTRUCTIONS_LENGTH,
         "properties": {"value": {"type": "string"}},
     }
-    with pytest.raises(routes._AiExtractSchemaError, match="character limit"):
-        routes._build_ai_extract_request(
+    with pytest.raises(ai_extract.AiExtractSchemaError, match="character limit"):
+        ai_extract.build_ai_extract_request(
             prompt="source",
             schema_json=json.dumps(schema),
             system_prompt="extra",
@@ -808,7 +801,7 @@ def test_ai_extract_instructions_limit_is_checked_before_api_call():
 
 
 def test_parse_ai_extract_response_unwraps_nested_values_and_evidence():
-    prediction, evidence = routes._parse_ai_extract_response(
+    prediction, evidence = ai_extract.parse_ai_extract_response(
         {
             "response": {
                 "patient": {
@@ -891,7 +884,7 @@ def test_run_inference_ai_extract_posts_payload_and_returns_clean_prediction(
                 prompt=source,
                 schema_json=json.dumps(schema),
                 system_prompt="Extract the patient name.",
-                model=routes.AI_EXTRACT_TARGET_ID,
+                model=ai_extract.AI_EXTRACT_TARGET_ID,
                 runtime="ai_extract",
                 ai_extract_options={
                     "precision": True,
@@ -903,12 +896,12 @@ def test_run_inference_ai_extract_posts_payload_and_returns_clean_prediction(
     )
 
     assert result.runtime == "ai_extract"
-    assert result.model == routes.AI_EXTRACT_TARGET_ID
+    assert result.model == ai_extract.AI_EXTRACT_TARGET_ID
     assert result.prediction == {"patient_name": "Ada Lovelace"}
     assert result.evidence.fields[0].citation_ids == [1]
     call = workspace.api_client.calls[0]
     assert call["method"] == "POST"
-    assert call["path"] == routes.AI_EXTRACT_PATH
+    assert call["path"] == ai_extract.AI_EXTRACT_PATH
     assert call["body"]["options"]["mode"] == "precision"
     assert call["body"]["options"]["enable_citations"] is True
     assert call["body"]["options"]["enable_confidence_scores"] is True
@@ -933,7 +926,7 @@ def test_run_inference_ai_extract_disables_optional_features_by_default(
                         "properties": {"value": {"type": "string"}},
                     }
                 ),
-                model=routes.AI_EXTRACT_TARGET_ID,
+                model=ai_extract.AI_EXTRACT_TARGET_ID,
                 runtime="ai_extract",
             )
         )
@@ -977,7 +970,7 @@ def test_run_inference_ai_extract_maps_api_errors(
         schema_json=json.dumps(
             {"type": "object", "properties": {"value": {"type": "string"}}}
         ),
-        model=routes.AI_EXTRACT_TARGET_ID,
+        model=ai_extract.AI_EXTRACT_TARGET_ID,
         runtime="ai_extract",
     )
 
@@ -1030,7 +1023,7 @@ def test_run_inference_ai_extract_retries_429_and_5xx(monkeypatch):
                 "required": ["value"],
             }
         ),
-        model=routes.AI_EXTRACT_TARGET_ID,
+        model=ai_extract.AI_EXTRACT_TARGET_ID,
         runtime="ai_extract",
     )
 
@@ -1039,6 +1032,59 @@ def test_run_inference_ai_extract_retries_429_and_5xx(monkeypatch):
     assert result.prediction == {"value": "ok"}
     assert len(api_client.calls) == 3
     assert delays == [0.25, 2]
+
+
+@pytest.mark.parametrize("runtime", ["model_serving", "ai_extract"])
+@pytest.mark.parametrize("first_attempt_seconds", [60.0, 109.5])
+def test_inference_retries_share_the_apps_request_deadline(
+    monkeypatch, runtime, first_attempt_seconds
+):
+    clock = SimpleNamespace(now=0.0)
+    timeouts = []
+    delays = []
+
+    async def invoke(_workspace, _path, _payload, timeout_s):
+        timeouts.append(timeout_s)
+        if len(timeouts) == 1:
+            clock.now += first_attempt_seconds
+            raise routes._LoadTestHttpError(
+                status_code=503,
+                error_code="UNAVAILABLE",
+                retry_after_secs=1,
+                message="GPU endpoint is scaling from zero",
+            )
+        clock.now += timeout_s
+        raise asyncio.TimeoutError
+
+    async def sleep(delay):
+        delays.append(delay)
+        clock.now += delay
+
+    monkeypatch.setattr(routes, "time", SimpleNamespace(
+        monotonic=lambda: clock.now, perf_counter=lambda: clock.now
+    ))
+    monkeypatch.setattr(routes.asyncio, "sleep", sleep)
+    monkeypatch.setattr(routes, "_invoke_endpoint", invoke)
+    monkeypatch.setattr(routes, "_invoke_load_test_endpoint_once", invoke)
+    monkeypatch.setattr(routes, "_get_workspace_client", FakeWorkspaceClient)
+    monkeypatch.setattr(routes, "_load_allowed_endpoints", lambda: ["test-endpoint"])
+    monkeypatch.setattr(routes, "_load_endpoint_settings", lambda: {})
+    request = InferenceRequest(
+        prompt="Synthetic source text.",
+        schema_json=SCHEMA_JSON,
+        model=(ai_extract.AI_EXTRACT_TARGET_ID if runtime == "ai_extract" else "test-endpoint"),
+        runtime=runtime,
+    )
+
+    response = asyncio.run(routes.run_inference(request))
+
+    assert response.status_code == 504
+    assert json.loads(response.body)["error_code"] == (
+        "AI_EXTRACT_TIMEOUT" if runtime == "ai_extract" else "TIMEOUT"
+    )
+    assert clock.now == 110.0
+    assert timeouts == ([110.0, 49.0] if first_attempt_seconds == 60.0 else [110.0])
+    assert delays == ([1.0] if first_attempt_seconds == 60.0 else [0.5])
 
 
 @pytest.mark.parametrize(
@@ -1063,7 +1109,7 @@ def test_run_inference_ai_extract_rejects_unsuccessful_or_malformed_responses(
         schema_json=json.dumps(
             {"type": "object", "properties": {"value": {"type": "string"}}}
         ),
-        model=routes.AI_EXTRACT_TARGET_ID,
+        model=ai_extract.AI_EXTRACT_TARGET_ID,
         runtime="ai_extract",
     )
 
@@ -1094,7 +1140,7 @@ def test_run_inference_ai_extract_validates_original_schema_formats(monkeypatch)
                 "required": ["date"],
             }
         ),
-        model=routes.AI_EXTRACT_TARGET_ID,
+        model=ai_extract.AI_EXTRACT_TARGET_ID,
         runtime="ai_extract",
     )
 
@@ -1238,6 +1284,50 @@ def test_run_inference_ppt_uses_response_format(monkeypatch):
     assert response_format["json_schema"]["strict"] is True
     assert response_format["json_schema"]["schema"]["type"] == "object"
     assert response_format["json_schema"]["schema"]["required"] == ["medications"]
+
+
+def test_strict_response_schema_preserves_sparse_customer_contract():
+    sparse_schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "patient_name": {"type": "string"},
+            "details": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "age": {"type": "integer"},
+                },
+            },
+        },
+    }
+
+    strict_schema = json_output.strict_response_schema(sparse_schema)
+
+    assert "required" not in sparse_schema
+    assert strict_schema["required"] == ["patient_name", "details"]
+    assert strict_schema["properties"]["patient_name"]["type"] == ["string", "null"]
+    assert strict_schema["properties"]["details"]["type"] == ["object", "null"]
+    assert strict_schema["properties"]["details"]["required"] == ["age"]
+    assert strict_schema["properties"]["details"]["properties"]["age"]["type"] == ["integer", "null"]
+
+
+def test_sparse_prediction_omits_provider_null_placeholders():
+    schema = {
+        "type": "object",
+        "properties": {
+            "patient_name": {"type": "string"},
+            "age": {"type": "integer"},
+        },
+    }
+
+    prediction = json_output.normalize_prediction_to_schema(
+        {"patient_name": "Alice", "age": None},
+        schema,
+    )
+
+    assert prediction == {"patient_name": "Alice"}
+    routes.Draft202012Validator(schema).validate(prediction)
 
 
 def test_workspace_endpoint_listing_does_not_expose_backend_exception(monkeypatch):

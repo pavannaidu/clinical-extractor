@@ -6,10 +6,22 @@ Show that a Unity Catalog-served custom model can return schema-valid JSON witho
 
 ## Execution Layer
 
-- Registration: `src/medgemma/01_register.py`
-- Deployment: `src/medgemma/02_deploy_endpoint.py`
-- Benchmarking: `src/medgemma/03_benchmark_endpoint.py`
-- Serving model: `src/medgemma/model.py`
+The primary custom-model path is Qwen:
+
+- Base serving: `src/models/qwen/deploy_vllm.py` (`inference_vllm_qwen`)
+- Disease-extraction fine-tuning: `src/models/qwen/finetune_disease.py` (`finetune_qwen3_disease`)
+
+Run those jobs to prepare the endpoints, then compare the base and fine-tuned
+models using the disease-extraction task. The app passes schemas to vLLM through
+`guided_json` and validates the returned JSON. Use reviewed ground truth to
+measure whether fine-tuning improves accuracy.
+
+MedGemma is an optional medical pretrained model comparison. Its XGrammar path is:
+
+- Registration: `src/models/medgemma/xgrammar/01_register.py`
+- Deployment: `src/models/medgemma/xgrammar/02_deploy_endpoint.py`
+- Benchmarking: `src/models/medgemma/xgrammar/03_benchmark_endpoint.py`
+- Serving model: `src/models/medgemma/xgrammar/model.py`
 
 ## Suggested Steps
 

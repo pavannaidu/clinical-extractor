@@ -50,6 +50,7 @@ import PresetManager from "./PresetManager";
 import ModelSettingsManager from "./ModelSettingsManager";
 import HelpDrawer from "./HelpDrawer";
 import ModelResultColumn from "./ModelResultColumn";
+import EvaluationsView from "./EvaluationsView";
 import { validateOutputTokenOverride } from "./outputTokens";
 
 const LoadTestCharts = lazy(() => import("./LoadTestCharts"));
@@ -99,7 +100,7 @@ function makeSlotId() {
 }
 
 type LeftPaneMode = "collapsed" | "normal";
-type AppView = "structured-output" | "load-testing";
+type AppView = "structured-output" | "load-testing" | "evaluations";
 
 function clampLeftPaneWidth(width: number): number {
   const viewportMaximum =
@@ -120,6 +121,10 @@ const APP_VIEW_OPTIONS: Array<{
   {
     id: "load-testing",
     title: "Load Testing",
+  },
+  {
+    id: "evaluations",
+    title: "Evaluations [Preview]",
   },
 ];
 const DEFAULT_LOAD_TEST_CONFIG = {
@@ -297,11 +302,6 @@ function formatPercentage(value: number | null | undefined): string {
   return `${Math.round(value * 100)}%`;
 }
 
-function formatTargetSource(value: string | null | undefined): string {
-  if (!value || value === "none") return "No reference";
-  return value === "documented" ? "Endpoint reference" : "User-entered reference";
-}
-
 function formatOtpm(value: number | null | undefined): string {
   if (value == null) {
     return "—";
@@ -447,21 +447,6 @@ function LoadTestingView({
   const progressPercent =
     progressTotal > 0 ? Math.min(100, (progressCompleted / progressTotal) * 100) : 0;
   const expectedOutputTokens = parseIntegerInput(form.expectedOutputTokens);
-  const targetOtpm = parseIntegerInput(form.targetOtpm);
-  const durationSeconds = parseIntegerInput(form.durationSeconds);
-  const loadMultiplier = Number(form.loadMultiplier);
-  const otpmRequestsPerMinute =
-    expectedOutputTokens && targetOtpm && Number.isFinite(loadMultiplier)
-      ? (targetOtpm / expectedOutputTokens) * loadMultiplier
-      : null;
-  const otpmIntervalSeconds =
-    otpmRequestsPerMinute && otpmRequestsPerMinute > 0
-      ? 60 / otpmRequestsPerMinute
-      : null;
-  const otpmPlannedRequests =
-    otpmIntervalSeconds && durationSeconds
-      ? Math.floor(durationSeconds / otpmIntervalSeconds) + 1
-      : null;
   const measuredAt = outputEstimate?.measured_at
     ? new Intl.DateTimeFormat(undefined, {
         month: "short",
@@ -485,18 +470,12 @@ function LoadTestingView({
         noValidate
       >
         <div className="load-test-toolbar-copy">
-          <span className="load-testing-eyebrow">Load Testing</span>
-          <h2>Endpoint token-throughput test</h2>
-          <p>
-            {form.schedulingMode === "burst"
-              ? "Push the endpoint immediately to expose throttling and retry behavior."
-              : "Schedule arrivals by wall clock at user-verified input and output token rates."}
-          </p>
+          <h2>Load test an endpoint</h2>
         </div>
 
         <div className="load-test-toolbar-actions">
           <div className="load-test-config-panel">
-            <div className="load-test-config-grid">
+            <div className={`load-test-config-grid is-${form.schedulingMode.replace("_", "-")}`}>
               <label className="load-test-field wide">
                 <span className="load-test-field-label">Endpoint</span>
                 <select
@@ -534,13 +513,10 @@ function LoadTestingView({
                   <option value="burst">Burst</option>
                   <option value="target_rate">Target rate</option>
                 </select>
-                <span className="load-test-field-help">
-                  {form.schedulingMode === "burst" ? "Immediate saturation" : "Clock-driven arrivals"}
-                </span>
               </label>
 
               {form.schedulingMode === "burst" ? <label className="load-test-field">
-                <span className="load-test-field-label">Requests</span>
+                <span className="load-test-field-label">Requests · 1–150</span>
                 <input
                   id="load-test-requests"
                   name="load-test-requests"
@@ -553,19 +529,16 @@ function LoadTestingView({
                     onFormChange("totalRequests", event.target.value)
                   }
                   disabled={busy || noModels}
-                  aria-describedby={
-                    fieldErrors.totalRequests ? "load-test-requests-error" : "load-test-requests-help"
-                  }
+                  aria-describedby={fieldErrors.totalRequests ? "load-test-requests-error" : undefined}
                   aria-invalid={Boolean(fieldErrors.totalRequests)}
                 />
-                <span id="load-test-requests-help" className="load-test-field-help">1–150 logical requests</span>
                 {fieldErrors.totalRequests && (
                   <span id="load-test-requests-error" className="load-test-field-error">
                     {fieldErrors.totalRequests}
                   </span>
                 )}
               </label> : <label className="load-test-field">
-                <span className="load-test-field-label">Duration</span>
+                <span className="load-test-field-label">Duration · 10–600s</span>
                 <input
                   id="load-test-duration"
                   name="load-test-duration"
@@ -578,13 +551,12 @@ function LoadTestingView({
                   disabled={busy || noModels}
                   aria-invalid={Boolean(fieldErrors.durationSeconds)}
                 />
-                <span className="load-test-field-help">10–600 seconds</span>
                 {fieldErrors.durationSeconds && <span className="load-test-field-error">{fieldErrors.durationSeconds}</span>}
               </label>}
 
               <label className="load-test-field">
                 <span className="load-test-field-label">
-                  {form.schedulingMode === "burst" ? "Workers" : "Max in flight"}
+                  {form.schedulingMode === "burst" ? "Workers · 1–10" : "Max in flight · 1–10"}
                 </span>
                 <input
                   id="load-test-workers"
@@ -596,14 +568,9 @@ function LoadTestingView({
                   value={form.maxWorkers}
                   onChange={(event) => onFormChange("maxWorkers", event.target.value)}
                   disabled={busy || noModels}
-                  aria-describedby={
-                    fieldErrors.maxWorkers ? "load-test-workers-error" : "load-test-workers-help"
-                  }
+                  aria-describedby={fieldErrors.maxWorkers ? "load-test-workers-error" : undefined}
                   aria-invalid={Boolean(fieldErrors.maxWorkers)}
                 />
-                <span id="load-test-workers-help" className="load-test-field-help">
-                  Safety ceiling: 1–10 calls
-                </span>
                 {fieldErrors.maxWorkers && (
                   <span id="load-test-workers-error" className="load-test-field-error">
                     {fieldErrors.maxWorkers}
@@ -611,52 +578,33 @@ function LoadTestingView({
                 )}
               </label>
 
-              <label className="load-test-field">
-                <span className="load-test-field-label">{form.schedulingMode === "burst" ? "OTPM reference" : "Target OTPM"}</span>
-                <input
-                  id="load-test-target-otpm"
-                  name="load-test-target-otpm"
-                  type="number"
-                  inputMode="numeric"
-                  min={1}
-                  max={LOAD_TEST_MAX_TARGET_TPM}
-                  placeholder={String(DEFAULT_REFERENCE_OTPM)}
-                  value={form.targetOtpm}
-                  onChange={(event) => onFormChange("targetOtpm", event.target.value)}
-                  disabled={busy || noModels}
-                  aria-describedby={
-                    fieldErrors.targetOtpm ? "load-test-target-otpm-error" : "load-test-target-otpm-help"
-                  }
-                  aria-invalid={Boolean(fieldErrors.targetOtpm)}
-                />
-                <span id="load-test-target-otpm-help" className="load-test-field-help">
-                  {form.schedulingMode === "burst" ? "Optional comparison only" : "Leave blank to pace by ITPM"}
-                </span>
-                {fieldErrors.targetOtpm && (
-                  <span id="load-test-target-otpm-error" className="load-test-field-error">
-                    {fieldErrors.targetOtpm}
-                  </span>
-                )}
-              </label>
-
               {form.schedulingMode === "target_rate" && <>
                 <label className="load-test-field">
-                  <span className="load-test-field-label">Target ITPM</span>
+                  <span className="load-test-field-label">Target OTPM</span>
                   <input
-                    id="load-test-target-itpm"
-                    name="load-test-target-itpm"
+                    id="load-test-target-otpm"
+                    name="load-test-target-otpm"
                     type="number"
                     inputMode="numeric"
                     min={1}
                     max={LOAD_TEST_MAX_TARGET_TPM}
-                    placeholder={String(DEFAULT_REFERENCE_ITPM)}
-                    value={form.targetItpm}
-                    onChange={(event) => onFormChange("targetItpm", event.target.value)}
+                    placeholder={String(DEFAULT_REFERENCE_OTPM)}
+                    value={form.targetOtpm}
+                    onChange={(event) => onFormChange("targetOtpm", event.target.value)}
                     disabled={busy || noModels}
-                    aria-invalid={Boolean(fieldErrors.targetItpm)}
+                    aria-describedby={
+                      fieldErrors.targetOtpm ? "load-test-target-otpm-error" : "load-test-target-otpm-help"
+                    }
+                    aria-invalid={Boolean(fieldErrors.targetOtpm)}
                   />
-                  <span className="load-test-field-help">Leave blank to pace by OTPM</span>
-                  {fieldErrors.targetItpm && <span className="load-test-field-error">{fieldErrors.targetItpm}</span>}
+                  <span id="load-test-target-otpm-help" className="load-test-field-help">
+                    Blank uses ITPM
+                  </span>
+                  {fieldErrors.targetOtpm && (
+                    <span id="load-test-target-otpm-error" className="load-test-field-error">
+                      {fieldErrors.targetOtpm}
+                    </span>
+                  )}
                 </label>
                 {form.targetOtpm.trim() && (
                   <div className="load-test-field load-test-output-estimate" aria-live="polite">
@@ -703,74 +651,27 @@ function LoadTestingView({
                     )}
                   </div>
                 )}
-                <label className="load-test-field">
-                  <span className="load-test-field-label">Load</span>
-                  <select
-                    id="load-test-multiplier"
-                    name="load-test-multiplier"
-                    value={form.loadMultiplier}
-                    onChange={(event) => onFormChange("loadMultiplier", event.target.value)}
-                    disabled={busy || noModels}
-                    aria-invalid={Boolean(fieldErrors.loadMultiplier)}
-                  >
-                    <option value="1">100% of target</option>
-                    <option value="1.25">125% of target</option>
-                    <option value="1.5">150% of target</option>
-                  </select>
-                  <span className="load-test-field-help">Use above 100% to provoke throttling</span>
-                </label>
               </>}
             </div>
 
-            <div className="load-test-estimate-line" role="status" aria-live="polite">
-              <strong>
-                {form.schedulingMode === "burst"
-                  ? `${form.totalRequests || "—"} ${parseIntegerInput(form.totalRequests) === 1 ? "request" : "requests"}`
-                  : `${form.durationSeconds || "—"} second target-rate run`}
-              </strong>
-              <span aria-hidden="true">·</span>
-              <span>
-                {form.maxWorkers || "—"}{" "}
-                {parseIntegerInput(form.maxWorkers) === 1 ? "worker" : "workers"}
-              </span>
-              <span aria-hidden="true">·</span>
-              <span>{form.schedulingMode === "burst" ? "burst scheduling" : `${form.loadMultiplier || "—"}× target load`}</span>
-              <span aria-hidden="true">·</span>
-              <span>{form.targetOtpm.trim() ? `${formatCompactInteger(parseIntegerInput(form.targetOtpm))} OTPM ${form.schedulingMode === "burst" ? "reference" : "target"}` : "OTPM unrestricted"}</span>
-              {form.schedulingMode === "target_rate" && otpmRequestsPerMinute && otpmIntervalSeconds && (
-                <>
-                  <span aria-hidden="true">·</span>
-                  <span>
-                    OTPM plan: ~{otpmRequestsPerMinute.toFixed(1)} starts/min · every {otpmIntervalSeconds.toFixed(1)}s
-                    {otpmPlannedRequests ? ` · up to ${otpmPlannedRequests} starts` : ""}
-                    {form.targetItpm.trim() ? " · ITPM may be stricter" : ""}
-                  </span>
-                </>
-              )}
-            </div>
-
-            {Object.values(fieldErrors).find(Boolean) && (
-              <p className="load-test-inline-error" role="alert">
-                {Object.values(fieldErrors).find(Boolean)}
-              </p>
-            )}
-
-            <div className="load-test-run-actions">
-              <button
-                type="submit"
-                className="btn-submit load-test-run-button"
-                disabled={busy || noModels || !selectedModel || needsOutputEstimate}
-                aria-busy={loading}
-              >
-                {loading && <span className="spinner" />}
-                {activeRunIsLive
-                  ? "Run in progress"
-                  : loading
-                    ? "Starting…"
-                    : needsOutputEstimate
-                      ? "Calibrate output first"
-                      : "Run load test"}
-              </button>
+            <div className="load-test-config-footer">
+              <div className="load-test-run-actions">
+                <button
+                  type="submit"
+                  className="btn-submit load-test-run-button"
+                  disabled={busy || noModels || !selectedModel || needsOutputEstimate}
+                  aria-busy={loading}
+                >
+                  {loading && <span className="spinner" />}
+                  {activeRunIsLive
+                    ? "Run in progress"
+                    : loading
+                      ? "Starting…"
+                      : needsOutputEstimate
+                        ? "Calibrate output first"
+                        : "Run load test"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -785,11 +686,8 @@ function LoadTestingView({
           aria-controls="load-test-workload-body"
         >
           <div className="load-test-sample-toggle-copy">
-            <span className="load-testing-eyebrow">Advanced</span>
-            <strong>References, output cap, and test payload</strong>
-            <p>
-              {sample?.name ?? "Clinical extraction payload"} · customize only when needed.
-            </p>
+            <strong>Advanced settings</strong>
+            <p>Rate limits, output, and payload</p>
           </div>
           <span className="load-test-sample-toggle-icon">
             <PreviewChevron expanded={showSamplePreview} />
@@ -805,8 +703,10 @@ function LoadTestingView({
             )}
 
             <div className="load-test-advanced-grid">
-              {form.schedulingMode === "burst" && <label className="load-test-field">
-                <span className="load-test-field-label">ITPM reference</span>
+              <label className="load-test-field">
+                <span className="load-test-field-label">
+                  {form.schedulingMode === "burst" ? "ITPM reference" : "Target ITPM"}
+                </span>
                 <input
                   id="load-test-target-itpm"
                   name="load-test-target-itpm"
@@ -824,14 +724,66 @@ function LoadTestingView({
                   aria-invalid={Boolean(fieldErrors.targetItpm)}
                 />
                 <span id="load-test-target-itpm-help" className="load-test-field-help">
-                  Optional comparison; does not pace requests
+                  {form.schedulingMode === "burst"
+                    ? "Comparison only"
+                    : "Blank uses OTPM"}
                 </span>
                 {fieldErrors.targetItpm && (
                   <span id="load-test-target-itpm-error" className="load-test-field-error">
                     {fieldErrors.targetItpm}
                   </span>
                 )}
-              </label>}
+              </label>
+              {form.schedulingMode === "burst" && (
+                <label className="load-test-field">
+                  <span className="load-test-field-label">OTPM reference</span>
+                  <input
+                    id="load-test-target-otpm"
+                    name="load-test-target-otpm"
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={LOAD_TEST_MAX_TARGET_TPM}
+                    placeholder={String(DEFAULT_REFERENCE_OTPM)}
+                    value={form.targetOtpm}
+                    onChange={(event) => onFormChange("targetOtpm", event.target.value)}
+                    disabled={busy || noModels}
+                    aria-describedby={
+                      fieldErrors.targetOtpm ? "load-test-target-otpm-error" : "load-test-target-otpm-help"
+                    }
+                    aria-invalid={Boolean(fieldErrors.targetOtpm)}
+                  />
+                  <span id="load-test-target-otpm-help" className="load-test-field-help">
+                    Optional comparison; does not pace requests
+                  </span>
+                  {fieldErrors.targetOtpm && (
+                    <span id="load-test-target-otpm-error" className="load-test-field-error">
+                      {fieldErrors.targetOtpm}
+                    </span>
+                  )}
+                </label>
+              )}
+              {form.schedulingMode === "target_rate" && (
+                <label className="load-test-field">
+                  <span className="load-test-field-label">Load</span>
+                  <select
+                    id="load-test-multiplier"
+                    name="load-test-multiplier"
+                    value={form.loadMultiplier}
+                    onChange={(event) => onFormChange("loadMultiplier", event.target.value)}
+                    disabled={busy || noModels}
+                    aria-invalid={Boolean(fieldErrors.loadMultiplier)}
+                  >
+                    <option value="1">100% of target</option>
+                    <option value="1.25">125% of target</option>
+                    <option value="1.5">150% of target</option>
+                  </select>
+                  <span className="load-test-field-help">Above 100% probes throttling</span>
+                  {fieldErrors.loadMultiplier && (
+                    <span className="load-test-field-error">{fieldErrors.loadMultiplier}</span>
+                  )}
+                </label>
+              )}
               {form.schedulingMode === "target_rate" && form.targetOtpm.trim() && (
                 <div className="load-test-output-override">
                   <div className="load-test-output-override-heading">
@@ -865,7 +817,7 @@ function LoadTestingView({
                       />
                     </label>
                   ) : (
-                    <p>Uses a saved measurement for this exact endpoint, prompt, schema, and output cap.</p>
+                    <p>Saved estimate for this endpoint and payload.</p>
                   )}
                 </div>
               )}
@@ -890,25 +842,18 @@ function LoadTestingView({
                   disabled={busy || noModels}
                   aria-invalid={Boolean(fieldErrors.maxTokens)}
                 />
-                <span className="load-test-field-help">Conservative output budget per request</span>
+                <span className="load-test-field-help">Per-request cap</span>
               </label>
               <div className="load-test-limits-copy">
-                <span className="load-test-field-label">Starting references</span>
-                <strong>Verify before running</strong>
-                <p>
-                  {`ITPM ${formatLimitValue(DEFAULT_REFERENCE_ITPM)} · OTPM ${formatLimitValue(DEFAULT_REFERENCE_OTPM)} · QPH ${formatLimitValue(DEFAULT_REFERENCE_QPH)}`}
-                </p>
-                <p>
-                  These values are not inferred from the selected endpoint.{" "}
-                  <a
-                    href="https://docs.databricks.com/aws/en/machine-learning/foundation-model-apis/limits#rate-limits-by-model"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Verify in the Databricks reference
-                  </a>
-                  .
-                </p>
+                <span className="load-test-field-label">Reference limits</span>
+                <strong>{`ITPM ${formatLimitValue(DEFAULT_REFERENCE_ITPM)} · OTPM ${formatLimitValue(DEFAULT_REFERENCE_OTPM)} · QPH ${formatLimitValue(DEFAULT_REFERENCE_QPH)}`}</strong>
+                <a
+                  href="https://docs.databricks.com/aws/en/machine-learning/foundation-model-apis/limits#rate-limits-by-model"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Check Databricks limits
+                </a>
                 {showTargetReset && (
                   <button
                     type="button"
@@ -939,9 +884,6 @@ function LoadTestingView({
               >
                 Use Playground input
               </button>
-              <span className="load-testing-pill">
-                Cache-busting per request · up to 10 retries · 2–60s full jitter
-              </span>
             </div>
             <div className="load-test-workload-grid">
               <label className="load-test-workload-field">
@@ -1026,13 +968,7 @@ function LoadTestingView({
         <>
           <section className="load-test-outcome" aria-live="polite">
             <div>
-              <span className="load-testing-eyebrow">Run outcome</span>
-              <h2>
-                {resultDisplayName} — achieved {formatOtpm(summary.achieved_otpm)}
-                {summary.target_otpm == null
-                  ? ""
-                  : ` vs ${formatCompactInteger(summary.target_otpm)} OTPM reference`}
-              </h2>
+              <h2>{resultDisplayName} load test complete</h2>
               <p>
                 {completedAt
                   ? `Completed ${completedAt.toLocaleString()} · ${resultModeLabel}`
@@ -1048,20 +984,18 @@ function LoadTestingView({
               <span>Achieved OTPM</span>
               <strong>{formatOtpm(summary.achieved_otpm)}</strong>
               <small>
-                Total output ÷ wall time × 60 · {formatPercentage(summary.otpm_target_achievement_ratio)} of {formatOtpm(summary.target_otpm)} reference · {formatTargetSource(result.config.target_otpm_source ?? result.config.target_source)}
+                {formatPercentage(summary.otpm_target_achievement_ratio)} of {formatOtpm(summary.target_otpm)} reference
               </small>
             </div>
             <div className="load-test-summary-card">
               <span>Reliability</span>
               <strong>{formatPercentage(summary.succeeded / result.config.total_requests)}</strong>
-              <small>{summary.succeeded} schema-valid · {summary.failed} failed · {summary.retried} retried</small>
+              <small>{summary.succeeded} valid · {summary.failed} failed · {summary.retried} retried</small>
             </div>
             <div className="load-test-summary-card">
               <span>Wall time</span>
               <strong>{formatSeconds(summary.wall_time_s)}</strong>
-              <small>
-                p95 request {formatSeconds(p95Latency)} · p99 {formatSeconds(summary.p99_latency_s)}
-              </small>
+              <small>p95 latency {formatSeconds(p95Latency)}</small>
             </div>
           </section>
 
@@ -1210,15 +1144,6 @@ function LoadTestingView({
             </details>
           </section>
         </>
-      )}
-
-      {!summary && !error && !noModels && !activeRun && !loading && (
-        <section className="load-test-message-card" role="status">
-          <p>
-            Choose a ready endpoint, select a traffic mode, then run the test.
-            References and payload details are optional advanced settings.
-          </p>
-        </section>
       )}
 
       {loading && !activeRun && (
@@ -1406,7 +1331,11 @@ function App() {
   const [activeView, setActiveView] = useState<AppView>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem(ACTIVE_VIEW_KEY);
-      if (saved === "structured-output" || saved === "load-testing") {
+      if (
+        saved === "structured-output" ||
+        saved === "load-testing" ||
+        saved === "evaluations"
+      ) {
         return saved;
       }
     }
@@ -2849,9 +2778,9 @@ function App() {
         )}
       </header>
 
-      {activeView === "structured-output" ? (
-        structuredOutputView
-      ) : (
+      {activeView === "structured-output" ? structuredOutputView : null}
+
+      {activeView === "load-testing" ? (
         <LoadTestingView
           theme={theme}
           models={loadTestModels}
@@ -2887,7 +2816,11 @@ function App() {
             setShowLoadTestSamplePreview((prev) => !prev)
           }
         />
-      )}
+      ) : null}
+
+      {activeView === "evaluations" ? (
+        <EvaluationsView models={models} presets={presets} />
+      ) : null}
 
       {showPresetManager && activeView === "structured-output" && (
         <PresetManager

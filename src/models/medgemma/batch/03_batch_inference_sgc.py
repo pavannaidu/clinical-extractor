@@ -417,7 +417,7 @@ import json
 def safe_parse(raw: str):
     """Return (parsed_json_str, error_str) — exactly one is non-None."""
     if raw is None:
-        return None, None
+        return None, "Model returned no output"
     try:
         return json.dumps(json.loads(raw)), None
     except Exception as e:
@@ -574,3 +574,16 @@ if "category" in [f.name for f in output_df.schema.fields]:
         )
         .orderBy("category")
     )
+
+from jsonschema import validate
+
+if total_out != len(input_items) or total_out == 0 or failures_out:
+    raise AssertionError(f"Invalid batch output: input={len(input_items)}, output={total_out}, failures={failures_out}")
+for row in result_pd.to_dict("records"):
+    validate(instance=json.loads(row["extracted_json"]), schema=json.loads(row["schema"]))
+dbutils.notebook.exit(json.dumps({
+    "output_table": OUTPUT_TABLE_FQN,
+    "rows": total_out,
+    "schema_valid_predictions": total_out,
+    "mlflow_run_id": run_id,
+}))

@@ -46,9 +46,9 @@ dbutils.widgets.text("num_training_examples", "50", "Examples per Category")
 # COMMAND ----------
 
 # DBTITLE 1,Install Dependencies
-# MAGIC %pip install peft>=0.14.0 trl>=0.16.0 bitsandbytes==0.46.1 datasets>=3.0.0 \
-# MAGIC   transformers>=4.51.3 accelerate==1.4.0 xgrammar==0.1.31 \
-# MAGIC   huggingface_hub hf_transfer mlflow
+# MAGIC %pip install "peft==0.14.0" "trl==0.16.1" "bitsandbytes==0.46.1" "datasets==3.6.0" \
+# MAGIC   "transformers==4.53.3" "accelerate==1.4.0" "xgrammar==0.1.31" \
+# MAGIC   huggingface_hub hf_transfer "mlflow==3.12.0" "databricks-sdk==0.96.0" "openai==2.17.0"
 
 # COMMAND ----------
 
@@ -733,7 +733,10 @@ class Gemma3TextCollator:
         padded_labels = []
         for lbl in labels:
             pad_len = max_len - len(lbl)
-            padded_labels.append(lbl + [-100] * pad_len)
+            padding = [-100] * pad_len
+            padded_labels.append(
+                padding + lbl if self.tokenizer.padding_side == "left" else lbl + padding
+            )
         batch["labels"] = torch.tensor(padded_labels)
         # Inject token_type_ids (all zeros = text tokens)
         batch["token_type_ids"] = torch.zeros_like(batch["input_ids"])
@@ -820,7 +823,19 @@ model = PeftModel.from_pretrained(base_model, ADAPTER_PATH)
 model = model.merge_and_unload()
 
 MERGED_PATH = "merged_model"
-model.save_pretrained(MERGED_PATH)
+# Gemma3's nested output head shares storage with the token embeddings.
+# Give safetensors an independent copy while preserving the model's weights.
+def merged_state_for_save(model):
+    state = model.state_dict()
+    for name, tensor in state.items():
+        if name.endswith("lm_head.weight"):
+            state[name] = tensor.clone()
+    return state
+
+
+merged_state = merged_state_for_save(model)
+model.save_pretrained(MERGED_PATH, state_dict=merged_state)
+del merged_state
 tokenizer.save_pretrained(MERGED_PATH)
 
 print(f"✓ Merged model saved to {MERGED_PATH}")
@@ -892,12 +907,12 @@ import mlflow
 
 mlflow.set_registry_uri("databricks-uc")
 
-# Derive the path to model.py (in the medgemma directory)
+# Reuse the XGrammar serving module beside the registration notebook.
 _notebook_path = (
     dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
 )
-_base_dir = _notebook_path.rsplit("/", 1)[0].rsplit("/", 1)[0]  # up to src/
-model_code_path = f"/Workspace{_base_dir}/medgemma/model.py"
+_notebook_dir = _notebook_path.rsplit("/", 1)[0]
+model_code_path = f"/Workspace{_notebook_dir}/xgrammar/model.py"
 print(f"Model code path: {model_code_path}")
 
 with mlflow.start_run(run_name="medgemma-qlora-finetuned") as run:
@@ -918,7 +933,8 @@ with mlflow.start_run(run_name="medgemma-qlora-finetuned") as run:
         metadata={"task": "llm/v1/chat"},
         pip_requirements=[
             "torch==2.6.0",
-            "transformers>=4.51.3",
+            "torchvision==0.21.0",
+            "transformers==4.53.3",
             "accelerate==1.4.0",
             "xgrammar==0.1.31",
         ],
@@ -1181,3 +1197,17 @@ print(f"    - Delete model:    client.delete_registered_model('{FULL_MODEL_NAME}
 print(f"    - Clean work dir:  rm -rf {pwd}")
 print()
 print("=" * 60)
+
+if not ENDPOINT_READY:
+    raise RuntimeError(f"Model registered, but endpoint {ENDPOINT_NAME} was not deployed successfully")
+from jsonschema import validate
+
+validate(instance=parsed, schema=MEDICATION_SCHEMA)
+dbutils.notebook.exit(json.dumps({
+    "registered_model": FULL_MODEL_NAME,
+    "model_version": str(model_version.version),
+    "endpoint_name": ENDPOINT_NAME,
+    "training_examples": len(training_examples),
+    "training_loss": train_result.training_loss,
+    "structured_smoke_test": parsed,
+}))

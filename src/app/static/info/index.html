@@ -9,15 +9,15 @@
   >
   <title>Structured AI in Life Sciences</title>
   <script>document.documentElement.classList.add('js');</script>
-  <link rel="stylesheet" href="/info/assets/tokens.css">
-  <link rel="stylesheet" href="/info/deck.css?v=20260914-4">
+  <link rel="stylesheet" href="./assets/tokens.css">
+  <link rel="stylesheet" href="./deck.css?v=20260914-4">
 </head>
 <body data-deck-title="Structured AI in Life Sciences">
   <a class="skip-link" href="#why-structured-ai">Skip to presentation</a>
 
   <div class="deck-shell" id="deck-shell">
     <header class="deck-tools deck-chrome" aria-label="Presentation view controls">
-      <img class="shell-mark" src="/info/assets/brand/databricks-symbol-color.svg" alt="">
+      <img class="shell-mark" src="./assets/brand/databricks-symbol-color.svg" alt="">
       <span class="shell-title">Structured AI · Life sciences</span>
       <span class="shell-divider" aria-hidden="true"></span>
       <button class="tool-button" id="view-toggle" type="button" aria-pressed="false">Read</button>
@@ -40,7 +40,7 @@
         >
           <div class="slide-grid thesis-grid">
             <div class="span-6 thesis-copy">
-              <img class="brand-logo brand-logo--light" src="/info/assets/brand/databricks-logo-white.svg" alt="Databricks">
+              <img class="brand-logo brand-logo--light" src="./assets/brand/databricks-logo-white.svg" alt="Databricks">
               <p class="eyebrow">Structured AI in life sciences</p>
               <h1 id="slide-1-title">Structured output turns clinical narrative into <span class="text-coral">testable data.</span></h1>
               <p class="lede">
@@ -95,67 +95,92 @@
             <h2 id="slide-2-title">Choose the least-complex path that passes the same clinical evaluation.</h2>
             <p class="exhibit-frame">Hold constant: source set · extraction schema · reviewer rubric · critical-field metrics</p>
 
-            <div class="decision-ladder" aria-label="Three progressive model options">
-              <article class="decision-step decision-step--start">
-                <div class="decision-order">01</div>
-                <div>
-                  <p class="step-label">Start managed</p>
-                  <h3>AI Extract or FMAPI</h3>
-                  <p>Use a supported managed model when it meets field-level quality requirements.</p>
-                </div>
-                <div class="move-gate">
-                  <span>Move on only if</span>
-                  <strong>You need a model, modality, or grammar the managed path does not provide.</strong>
-                </div>
-              </article>
+            <div class="decision-visual">
+              <div class="decision-ladder" aria-label="Three progressive model options">
+                <article class="decision-step decision-step--start">
+                  <div class="decision-order">01</div>
+                  <div>
+                    <p class="step-label">Start managed</p>
+                    <h3>AI Extract or FMAPI</h3>
+                    <p>Use a supported managed model when it meets field-level quality requirements.</p>
+                  </div>
+                  <div class="move-gate">
+                    <span>Move on only if</span>
+                    <strong>You need a model, modality, or grammar the managed path does not provide.</strong>
+                  </div>
+                </article>
 
-              <article class="decision-step">
-                <div class="decision-order">02</div>
-                <div>
-                  <p class="step-label">Add runtime control</p>
-                  <h3>Custom model + vLLM + XGrammar</h3>
-                  <p>Own the custom model, vLLM serving and inference engine, and XGrammar decoder.</p>
-                </div>
-                <div class="move-gate">
-                  <span>Move on only if</span>
-                  <strong>Repeatable semantic errors remain after prompt and schema changes.</strong>
-                </div>
-              </article>
+                <article class="decision-step">
+                  <div class="decision-order">02</div>
+                  <div>
+                    <p class="step-label">Add runtime control</p>
+                    <h3>Custom model + vLLM + XGrammar</h3>
+                    <p>Own the custom model, vLLM serving and inference engine, and XGrammar decoder.</p>
+                  </div>
+                  <div class="move-gate">
+                    <span>Move on only if</span>
+                    <strong>Repeatable semantic errors remain after prompt and schema changes.</strong>
+                  </div>
+                </article>
 
-              <article class="decision-step">
-                <div class="decision-order">03</div>
-                <div>
-                  <p class="step-label">Adapt model behavior</p>
-                  <h3>Fine-tuned custom LLM</h3>
-                  <p>Train against adjudicated examples, then re-score the same held-out review.</p>
-                </div>
-                <div class="move-gate">
-                  <span>Ship only if</span>
-                  <strong>Quality lifts materially without unacceptable latency or cost.</strong>
-                </div>
-              </article>
-            </div>
-
-            <div
-              class="complexity-ramp"
-              role="img"
-              aria-label="Implementation and operating complexity increases from managed extraction to custom model serving to fine-tuning. Directional, not to scale."
-            >
-              <div class="complexity-ramp__title">
-                <strong>Implementation + operating complexity</strong>
-                <span>Directional—not to scale</span>
+                <article class="decision-step">
+                  <div class="decision-order">03</div>
+                  <div>
+                    <p class="step-label">Adapt model behavior</p>
+                    <h3>Fine-tuned custom LLM</h3>
+                    <p>Train against adjudicated examples, then re-score the same held-out review.</p>
+                  </div>
+                  <div class="move-gate">
+                    <span>Ship only if</span>
+                    <strong>Quality lifts materially without unacceptable latency or cost.</strong>
+                  </div>
+                </article>
               </div>
-              <div class="complexity-ramp__visual" aria-hidden="true">
-                <div class="complexity-ramp__arrow"></div>
-                <div class="complexity-ramp__labels">
+
+              <div
+                class="complexity-ramp"
+                role="img"
+                aria-label="Implementation and operating complexity rises gradually from managed extraction, then increases sharply through custom model serving and fine-tuning."
+              >
+                <svg
+                  class="complexity-ramp__curve"
+                  viewBox="0 0 1424 380"
+                  preserveAspectRatio="none"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <defs>
+                    <linearGradient id="complexity-curve-fill" x1="0" y1="1" x2="1" y2="0">
+                      <stop offset="0" stop-color="#618794" stop-opacity="0.03"></stop>
+                      <stop offset="0.58" stop-color="#ff5f46" stop-opacity="0.08"></stop>
+                      <stop offset="1" stop-color="#ff3621" stop-opacity="0.16"></stop>
+                    </linearGradient>
+                    <linearGradient id="complexity-curve-stroke" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0" stop-color="#618794" stop-opacity="0.28"></stop>
+                      <stop offset="0.64" stop-color="#ff5f46" stop-opacity="0.42"></stop>
+                      <stop offset="1" stop-color="#ff3621" stop-opacity="0.62"></stop>
+                    </linearGradient>
+                  </defs>
+                  <path
+                    class="complexity-ramp__area"
+                    d="M 0 328 C 500 328 790 324 1010 282 C 1190 248 1330 140 1424 26 L 1424 380 L 0 380 Z"
+                    fill="url(#complexity-curve-fill)"
+                  ></path>
+                  <path
+                    class="complexity-ramp__line"
+                    d="M 0 328 C 500 328 790 324 1010 282 C 1190 248 1330 140 1424 26"
+                    fill="none"
+                    stroke="url(#complexity-curve-stroke)"
+                  ></path>
+                </svg>
+                <strong class="complexity-ramp__title">Implementation + operating complexity</strong>
+                <div class="complexity-ramp__labels" aria-hidden="true">
                   <span>Managed</span>
                   <span>Custom model</span>
                   <span>Fine-tune</span>
                 </div>
               </div>
             </div>
-
-            <footer class="source-line">Conceptual decision framework synthesized from the Databricks product paths cited on slides 3–5.</footer>
           </div>
         </section>
 
@@ -174,7 +199,7 @@
             <div class="managed-comparison" aria-label="Comparison of AI Extract and Foundation Model APIs">
               <article class="managed-column managed-column--highlight">
                 <header>
-                  <img src="/info/assets/brand/agent-bricks-icon-full-color.svg" alt="" aria-hidden="true">
+                  <img src="./assets/brand/agent-bricks-icon-full-color.svg" alt="" aria-hidden="true">
                   <div>
                     <p class="step-label">Higher-level workflow</p>
                     <h3>AI Extract</h3>
@@ -194,7 +219,7 @@
 
               <article class="managed-column">
                 <header>
-                  <img src="/info/assets/brand/mosaic-ai-icon-full-color.svg" alt="" aria-hidden="true">
+                  <img src="./assets/brand/mosaic-ai-icon-full-color.svg" alt="" aria-hidden="true">
                   <div>
                     <p class="step-label">Model-level contract</p>
                     <h3>FMAPI structured outputs</h3>
@@ -248,7 +273,7 @@
                 <span class="boundary-label">Databricks governed platform</span>
                 <div class="architecture-flow">
                   <article class="architecture-node">
-                    <img src="/info/assets/brand/unity-catalog-icon-full-color.svg" alt="" aria-hidden="true">
+                    <img src="./assets/brand/unity-catalog-icon-full-color.svg" alt="" aria-hidden="true">
                     <span>01 · Govern</span>
                     <h3>Model + data</h3>
                     <p>Model assets and source data under Unity Catalog governance.</p>
@@ -260,13 +285,13 @@
                     <p>Develop and benchmark the custom model on serverless GPU.</p>
                   </article>
                   <article class="architecture-node architecture-node--focus">
-                    <img src="/info/assets/brand/mosaic-ai-icon-full-color.svg" alt="" aria-hidden="true">
+                    <img src="./assets/brand/mosaic-ai-icon-full-color.svg" alt="" aria-hidden="true">
                     <span>03 · Constrain</span>
                     <h3>vLLM + XGrammar</h3>
                     <p>Use vLLM as the serving and inference engine; constrain generation with XGrammar.</p>
                   </article>
                   <article class="architecture-node">
-                    <img src="/info/assets/brand/mosaic-ai-icon-full-color.svg" alt="" aria-hidden="true">
+                    <img src="./assets/brand/mosaic-ai-icon-full-color.svg" alt="" aria-hidden="true">
                     <span>04 · Serve</span>
                     <h3>Model Serving</h3>
                     <p>Package with MLflow, register, and deploy the custom model with vLLM serving.</p>
@@ -362,6 +387,6 @@
   </div>
 
   <p class="sr-only" id="live-status" aria-live="polite"></p>
-  <script src="/info/deck.js"></script>
+  <script src="./deck.js"></script>
 </body>
 </html>

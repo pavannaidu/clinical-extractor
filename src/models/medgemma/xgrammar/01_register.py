@@ -25,13 +25,14 @@ dbutils.widgets.text("hf_model_name", "google/medgemma-1.5-4b-it", "HuggingFace 
 
 # DBTITLE 1,Install Dependencies
 # MAGIC %pip install -U \
-# MAGIC   "transformers>=4.51.3" \
+# MAGIC   "transformers==4.53.3" \
 # MAGIC   "accelerate==1.4.0" \
 # MAGIC   "bitsandbytes==0.46.1" \
 # MAGIC   "xgrammar==0.1.31" \
 # MAGIC   "huggingface_hub" \
 # MAGIC   "hf_transfer" \
-# MAGIC   "mlflow"
+# MAGIC   "mlflow==3.12.0" \
+# MAGIC   "databricks-sdk==0.96.0"
 
 # COMMAND ----------
 
@@ -121,7 +122,8 @@ with mlflow.start_run(run_name="medgemma-xgrammar-chatmodel") as run:
         metadata={"task": "llm/v1/chat"},
         pip_requirements=[
             "torch==2.6.0",
-            "transformers>=4.51.3",
+            "torchvision==0.21.0",
+            "transformers==4.53.3",
             "accelerate==1.4.0",
             "xgrammar==0.1.31",
         ],
@@ -159,6 +161,7 @@ except Exception:
 
 # DBTITLE 1,Chat Inference Test (from Registry)
 import json
+from jsonschema import validate
 
 loaded_model = mlflow.pyfunc.load_model(f"models:/{FULL_MODEL_NAME}@challenger")
 
@@ -179,20 +182,46 @@ prompts = [
     "Extract medication info: Patient taking Lisinopril 10mg once daily by mouth for hypertension.",
 ]
 
-for i, prompt in enumerate(prompts, 1):
+test_cases = [(prompt, medication_schema, 0.7) for prompt in prompts]
+vitals_schema = {
+    "type": "object",
+    "properties": {
+        "blood_pressure": {"type": "string"},
+        "heart_rate": {"type": "integer"},
+        "temperature_f": {"type": "number"},
+        "respiratory_rate": {"type": "integer"},
+        "spo2_percent": {"type": "number"},
+    },
+    "required": ["blood_pressure", "heart_rate", "temperature_f"],
+}
+# This prompt previously exhausted its token budget on JSON whitespace.
+for temperature in [0.0, 0.7]:
+    test_cases.append((
+        "Extract patient vitals: Blood pressure 118/74, heart rate 72, temperature "
+        "98.6 Fahrenheit, respiratory rate 14, oxygen saturation 99 percent on room air.",
+        vitals_schema,
+        temperature,
+    ))
+
+for i, (prompt, requested_schema, temperature) in enumerate(test_cases, 1):
     result = loaded_model.predict(
         {
             "messages": [{"role": "user", "content": prompt}],
-            "custom_inputs": {"schema": json.dumps(medication_schema)},
+            "custom_inputs": {"schema": json.dumps(requested_schema)},
+            "temperature": temperature,
         }
     )
     print(f"Result {i}:")
     content = result["choices"][0]["message"]["content"]
-    try:
-        print(json.dumps(json.loads(content), indent=2))
-    except Exception:
-        print(content)
+    parsed = json.loads(content)
+    validate(instance=parsed, schema=requested_schema)
+    print(json.dumps(parsed, indent=2))
     print(f"Usage: {result.get('usage', {})}")
     print()
 
 print("✓ Chat inference test passed")
+dbutils.notebook.exit(json.dumps({
+    "model_name": FULL_MODEL_NAME,
+    "model_version": str(model_version.version),
+    "schema_valid_predictions": len(test_cases),
+}))

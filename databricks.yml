@@ -1,13 +1,44 @@
 bundle:
   name: medgemma
 
+include:
+  - resources/*.yml
+
+sync:
+  exclude:
+    - docs/**
+    - showcase/**
+    - src/**/README.md
+    - src/app/frontend/**
+    - src/app/tests/**
+    - tests/**
+    - "**/.pages.json"
+
 variables:
+  app_name:
+    description: Databricks App name (lowercase letters, digits and hyphens; at most 30 characters).
+    default: clinical-${workspace.current_user.domain_friendly_name}
+  lakebase_project:
+    description: Existing Lakebase project ID.
+    default: 346167b8-965a-40af-a581-ac58f668b949
+  lakebase_branch:
+    description: Existing Lakebase branch ID within the project.
+    default: br-muddy-snow-d2go89fq
+  lakebase_database:
+    description: Existing Lakebase database ID within the branch.
+    default: clinical-extractor
+  evaluation_experiment_name:
+    description: MLflow experiment created by the bundle for app evaluations.
+    default: /Shared/clinical-extractor-evaluations
+  batch_experiment_name:
+    description: MLflow experiment used by the Serverless GPU batch job.
+    default: /Users/${workspace.current_user.userName}/medgemma-xgrammar
   catalog:
     default: pavan_naidu_catalog
   schema:
     default: mlops
 
-  # ── MedGemma pipeline ──────────────────────────────────────────────────────
+  # MedGemma serving
   medgemma_registered_model_name:
     default: medgemma_xgrammar_structured
   # Base name only; deployment, benchmark, and batch notebooks append the
@@ -15,19 +46,21 @@ variables:
   medgemma_endpoint_name:
     default: medgemma-1_5-4b-xgrammar
 
-  # ── Cluster ────────────────────────────────────────────────────────────────
+  # Classic GPU cluster for the UDF batch job
   gpu_node_type:
     default: g5.2xlarge
   gpu_spark_version:
-    default: "16.2.x-gpu-ml-scala2.12"
+    default: "17.3.x-gpu-ml-scala2.13"
 
-  # ── Fine-tuning ───────────────────────────────────────────────────────────
+  # Fine-tuning and app evaluation
   finetune_registered_model_name:
     default: medgemma_xgrammar_finetuned
   qwen3_finetuned_registered_model_name:
     default: qwen3_vllm_structured
   qwen3_finetuned_endpoint_name:
     default: qwen3-4b-finetuned-vllm-endpoint
+  evaluation_warehouse_id:
+    default: fb3b5c1dee0b9d55
 
 targets:
   dev:
@@ -36,335 +69,3 @@ targets:
     workspace:
       host: https://fevm-pavan-naidu.cloud.databricks.com
       profile: FEVM
-
-resources:
-  jobs:
-
-    # ── MedGemma pipeline ──────────────────────────────────────────────────────
-
-    medgemma_register:
-      name: "[medgemma] 1. Register Model"
-      environments:
-        - environment_key: sgc
-          spec:
-            client: "4"
-      tasks:
-        - task_key: register
-          environment_key: sgc
-          compute:
-            hardware_accelerator: GPU_1xA10
-          notebook_task:
-            notebook_path: ./src/medgemma/01_register.py
-            base_parameters:
-              catalog: ${var.catalog}
-              schema: ${var.schema}
-              registered_model_name: ${var.medgemma_registered_model_name}
-              hf_model_name: "google/medgemma-1.5-4b-it"
-
-    medgemma_deploy:
-      name: "[medgemma] 2. Deploy Endpoint"
-      parameters:
-        - name: workload_type
-          default: GPU_MEDIUM  # GPU_SMALL=T4, GPU_MEDIUM=A10, GPU_LARGE=A100
-        - name: workload_size
-          default: Small
-        - name: model_version
-          default: ""
-      environments:
-        - environment_key: sgc
-          spec:
-            client: "4"
-      tasks:
-        - task_key: deploy
-          environment_key: sgc
-          compute:
-            hardware_accelerator: GPU_1xA10
-          notebook_task:
-            notebook_path: ./src/medgemma/02_deploy_endpoint.py
-            base_parameters:
-              catalog: ${var.catalog}
-              schema: ${var.schema}
-              registered_model_name: ${var.medgemma_registered_model_name}
-              model_version: "{{job.parameters.model_version}}"
-              endpoint_name: ${var.medgemma_endpoint_name}
-              workload_type: "{{job.parameters.workload_type}}"
-              workload_size: "{{job.parameters.workload_size}}"
-              scale_to_zero: "false"
-
-    medgemma_benchmark:
-      name: "[medgemma] 3. Benchmark Endpoint"
-      parameters:
-        - name: workload_type
-          default: GPU_MEDIUM  # GPU_SMALL=T4, GPU_MEDIUM=A10, GPU_LARGE=A100
-      environments:
-        - environment_key: sgc
-          spec:
-            client: "4"
-      tasks:
-        - task_key: benchmark
-          environment_key: sgc
-          compute:
-            hardware_accelerator: GPU_1xA10
-          notebook_task:
-            notebook_path: ./src/medgemma/03_benchmark_endpoint.py
-            base_parameters:
-              catalog: ${var.catalog}
-              schema: ${var.schema}
-              endpoint_name: ${var.medgemma_endpoint_name}
-              workload_type: "{{job.parameters.workload_type}}"
-              input_table: "medgemma_batch_input"
-              num_rows: "200"
-              request_batch_size: "1"
-              concurrency_levels: "1,4"
-              warmup_requests: "10"
-
-    # ── Batch ─────────────────────────────────────────────────────────────────
-
-    prepare_batch_input:
-      name: "[medgemma/batch] 1. Prepare Batch Input"
-      environments:
-        - environment_key: sgc
-          spec:
-            client: "4"
-      tasks:
-        - task_key: prepare_input
-          environment_key: sgc
-          compute:
-            hardware_accelerator: GPU_1xA10
-          notebook_task:
-            notebook_path: ./src/batch/01_prepare_batch_input.py
-            base_parameters:
-              catalog: ${var.catalog}
-              schema: ${var.schema}
-              input_table: "medgemma_batch_input"
-              synthetic_replications: "50"
-
-    batch_inference_udf:
-      name: "[medgemma/batch] 2. Batch Inference (UDF)"
-      parameters:
-        - name: workload_type
-          default: GPU_MEDIUM  # GPU_SMALL=T4, GPU_MEDIUM=A10, GPU_LARGE=A100
-      job_clusters:
-        - job_cluster_key: gpu
-          new_cluster:
-            spark_version: ${var.gpu_spark_version}
-            node_type_id: ${var.gpu_node_type}
-            num_workers: 2
-      tasks:
-        - task_key: batch_inference
-          job_cluster_key: gpu
-          notebook_task:
-            notebook_path: ./src/batch/02_batch_inference_udf.py
-            base_parameters:
-              catalog: ${var.catalog}
-              schema: ${var.schema}
-              registered_model_name: ${var.medgemma_registered_model_name}
-              model_alias: "challenger"
-              endpoint_name: ${var.medgemma_endpoint_name}
-              workload_type: "{{job.parameters.workload_type}}"
-              input_table: "medgemma_batch_input"
-              output_table: "medgemma_batch_output"
-
-    batch_inference_sgc:
-      name: "[medgemma/batch] 3. Batch Inference (SGC)"
-      environments:
-        - environment_key: sgc
-          spec:
-            client: "4"
-      tasks:
-        - task_key: batch_inference
-          environment_key: sgc
-          compute:
-            hardware_accelerator: GPU_1xA10
-          notebook_task:
-            notebook_path: ./src/batch/03_batch_inference_sgc.py
-            base_parameters:
-              catalog: ${var.catalog}
-              schema: ${var.schema}
-              hf_model_name: "google/medgemma-1.5-4b-it"
-              input_table: "medgemma_batch_input"
-              output_table: "medgemma_batch_output_sgc"
-              num_gpus: "2"
-              batch_size: "32"
-              experiment_name: "/Users/pavan.naidu@databricks.com/medgemma-xgrammar"
-
-    # ── vLLM ──────────────────────────────────────────────────────────────────
-
-    medgemma_vllm:
-      name: "[medgemma/vllm] Custom LLM Serving (vLLM)"
-      environments:
-        - environment_key: sgc
-          spec:
-            client: "4"
-      tasks:
-        - task_key: medgemma_vllm
-          environment_key: sgc
-          compute:
-            hardware_accelerator: GPU_1xA10
-          notebook_task:
-            notebook_path: ./src/vllm/medgemma_vllm.py
-            base_parameters:
-              catalog: ${var.catalog}
-              schema: ${var.schema}
-              registered_model_name: "medgemma_vllm_structured"
-              endpoint_name: "medgemma-1-5-4b-vllm-endpoint"
-              workload_type: "GPU_MEDIUM"
-              scale_to_zero: "true"
-              hf_model_name: "google/medgemma-1.5-4b-it"
-
-    inference_vllm_qwen:
-      name: "[qwen/vllm] Custom LLM Serving (vLLM)"
-      environments:
-        - environment_key: sgc
-          spec:
-            client: "4"
-      tasks:
-        - task_key: inference_vllm_qwen
-          environment_key: sgc
-          compute:
-            hardware_accelerator: GPU_1xA10
-          notebook_task:
-            notebook_path: ./src/vllm/inference_vllm_qwen.py
-            base_parameters:
-              catalog: ${var.catalog}
-              schema: ${var.schema}
-              registered_model_name: "qwen3_vllm_structured"
-              endpoint_name: "qwen3-4b-vllm-endpoint"
-              workload_type: "GPU_MEDIUM"
-              scale_to_zero: "false"
-              hf_model_name: "Qwen/Qwen3-4B-Instruct-2507"
-
-    # ── Fine-tuning ────────────────────────────────────────────────────────────
-
-    finetune_medgemma:
-      name: "[finetune] QLoRA Fine-tune MedGemma"
-      environments:
-        - environment_key: sgc
-          spec:
-            client: "4"
-      tasks:
-        - task_key: finetune
-          environment_key: sgc
-          compute:
-            hardware_accelerator: GPU_1xA10
-          notebook_task:
-            notebook_path: ./src/finetune/finetune_medgemma.py
-            base_parameters:
-              catalog: ${var.catalog}
-              schema: ${var.schema}
-              registered_model_name: ${var.finetune_registered_model_name}
-              endpoint_name: "medgemma-finetuned-endpoint"
-              workload_type: "GPU_MEDIUM"
-              scale_to_zero: "true"
-              hf_model_name: "google/medgemma-1.5-4b-it"
-              lora_rank: "16"
-              lora_alpha: "32"
-              num_epochs: "3"
-              learning_rate: "2e-4"
-              max_seq_length: "2048"
-              num_training_examples: "50"
-
-    finetune_qwen3_disease:
-      name: "[finetune] QLoRA Fine-tune Qwen3-4B for Disease Extraction"
-      environments:
-        - environment_key: ai_v6
-          spec:
-            environment_version: "6"
-      tasks:
-        - task_key: finetune
-          environment_key: ai_v6
-          compute:
-            hardware_accelerator: GPU_1xA10
-          notebook_task:
-            notebook_path: ./src/finetune/finetune_qwen3_disease.py
-            base_parameters:
-              catalog: ${var.catalog}
-              schema: ${var.schema}
-              registered_model_name: ${var.qwen3_finetuned_registered_model_name}
-              endpoint_name: ${var.qwen3_finetuned_endpoint_name}
-              max_train_examples: "2048"
-              max_eval_examples: "256"
-              num_epochs: "1"
-              learning_rate: "2e-4"
-              max_seq_length: "1024"
-
-  apps:
-    clinical_extractor:
-      name: clinical-extractor
-      description: "Interactive UI for structured clinical data extraction"
-      source_code_path: ./src/app
-      resources:
-        - name: postgres
-          postgres:
-            branch: projects/346167b8-965a-40af-a581-ac58f668b949/branches/br-muddy-snow-d2go89fq
-            database: projects/346167b8-965a-40af-a581-ac58f668b949/branches/br-muddy-snow-d2go89fq/databases/clinical-extractor
-            permission: CAN_CONNECT_AND_CREATE
-        - name: ai-extract
-          uc_securable:
-            securable_type: FUNCTION
-            securable_full_name: system.ai.ai_extract
-            permission: EXECUTE
-        - name: medgemma-vllm
-          serving_endpoint:
-            name: medgemma-1-5-4b-vllm-endpoint
-            permission: CAN_QUERY
-        - name: qwen-vllm
-          serving_endpoint:
-            name: qwen3-4b-vllm-endpoint
-            permission: CAN_QUERY
-        - name: qwen-finetuned-vllm
-          serving_endpoint:
-            name: ${var.qwen3_finetuned_endpoint_name}
-            permission: CAN_QUERY
-        - name: claude-opus-4-6
-          serving_endpoint:
-            name: databricks-claude-opus-4-6
-            permission: CAN_QUERY
-        - name: claude-sonnet-4-6
-          serving_endpoint:
-            name: databricks-claude-sonnet-4-6
-            permission: CAN_QUERY
-        - name: claude-sonnet-4-5
-          serving_endpoint:
-            name: databricks-claude-sonnet-4-5
-            permission: CAN_QUERY
-        - name: claude-opus-4-5
-          serving_endpoint:
-            name: databricks-claude-opus-4-5
-            permission: CAN_QUERY
-        - name: claude-opus-4-1
-          serving_endpoint:
-            name: databricks-claude-opus-4-1
-            permission: CAN_QUERY
-        - name: claude-sonnet-4
-          serving_endpoint:
-            name: databricks-claude-sonnet-4
-            permission: CAN_QUERY
-        - name: claude-haiku-4-5
-          serving_endpoint:
-            name: databricks-claude-haiku-4-5
-            permission: CAN_QUERY
-        - name: gemini-3-1-flash-lite
-          serving_endpoint:
-            name: databricks-gemini-3-1-flash-lite
-            permission: CAN_QUERY
-        - name: gemini-2-5-pro
-          serving_endpoint:
-            name: databricks-gemini-2-5-pro
-            permission: CAN_QUERY
-        - name: gemini-2-5-flash
-          serving_endpoint:
-            name: databricks-gemini-2-5-flash
-            permission: CAN_QUERY
-        - name: gpt-5-4-mini
-          serving_endpoint:
-            name: databricks-gpt-5-4-mini
-            permission: CAN_QUERY
-        - name: gpt-oss-120b
-          serving_endpoint:
-            name: databricks-gpt-oss-120b
-            permission: CAN_QUERY
-        - name: gpt-oss-20b
-          serving_endpoint:
-            name: databricks-gpt-oss-20b
-            permission: CAN_QUERY

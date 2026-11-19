@@ -1,4 +1,7 @@
-# MedGemma Benchmark Results
+# Historical MedGemma benchmark results
+
+Recorded February 2026. Model and endpoint names below describe that run;
+see [setup](../setup.md) for the current deployment.
 
 ## Model
 
@@ -19,7 +22,9 @@
 | Decoding | Stochastic (`temperature=0.7`) | Greedy (`do_sample=False`) |
 | Generation | Serial loop (1 prompt/GPU call) | Batched (all prompts in 1 GPU call) |
 
-> **Note:** The v22+ optimizations exist in `src/model.py` locally but were not re-registered before these benchmarks ran. All results below are for the **v21 unoptimized baseline**.
+All results below are for the **v21 unoptimized baseline**. The v22+ column
+records a proposed configuration at that time; no corresponding result was recorded
+in this note. The current model wrapper lives in `src/models/medgemma/xgrammar/model.py`.
 
 ---
 
@@ -31,9 +36,3 @@
 | 4 | 12.1 | 18.1 | 74.9 | 0.16 | 1240.9 | 20.23 | 34.23 | 57.88 | 5 |
 
 **Why OutTok/s is flat at both concurrency levels:** `GPU_SMALL` = 1 T4 replica. BF16 inference is memory-bandwidth bound (~320 GB/s on T4). One request already saturates the GPU at c=1; at c=4, requests queue on the same hardware — total throughput stays flat while p50 latency scales ~4× (4.98s → 20.23s). To scale throughput, increase replicas (`workload_size=Medium/Large`), not concurrency against a single replica.
-
----
-
-## Run 2 — T4 · v22 optimized (GPU_SMALL · Small · TBD)
-
-_Pending re-register of `src/model.py` (batched greedy, `max_new_tokens=256`)_

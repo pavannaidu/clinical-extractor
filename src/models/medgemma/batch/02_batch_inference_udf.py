@@ -22,9 +22,9 @@
 # MAGIC - `mlflow_run_id` (string)   — MLflow run that logged this batch
 # MAGIC
 # MAGIC ## Prerequisites
-# MAGIC - `src/medgemma/01_register.py` has been run and the **challenger**
+# MAGIC - `src/models/medgemma/xgrammar/01_register.py` has been run and the **challenger**
 # MAGIC   model alias is set in Unity Catalog.
-# MAGIC - `src/medgemma/02_deploy_endpoint.py` has created the serving endpoint
+# MAGIC - `src/models/medgemma/xgrammar/02_deploy_endpoint.py` has created the serving endpoint
 # MAGIC   for the selected workload type.
 
 # COMMAND ----------
@@ -52,11 +52,11 @@ dbutils.widgets.text("pandas_predict_batch_size", "32",                         
 
 # DBTITLE 1,Install Dependencies
 %pip install -U \
-  "transformers>=4.51.3" \
+  "transformers==4.53.3" \
   "accelerate==1.4.0" \
   "bitsandbytes==0.46.1" \
   xgrammar==0.1.31 \
-  huggingface_hub
+  huggingface_hub "mlflow==3.12.0" "databricks-sdk==0.96.0"
 
 # COMMAND ----------
 
@@ -119,15 +119,85 @@ display(spark.table(INPUT_TABLE_FQN))
 
 # COMMAND ----------
 
+# DBTITLE 1,Check SQL Serving Compatibility Before Loading Weights
+from pyspark.sql import functions as F
+from jsonschema import validate
+
+
+def query_endpoint(inference_ts, row_limit=None):
+    source = INPUT_TABLE_FQN
+    if row_limit is not None:
+        source = f"(SELECT * FROM {INPUT_TABLE_FQN} LIMIT {int(row_limit)})"
+    return spark.sql(
+        f"""
+        SELECT
+            *,
+            ai_query(
+                :endpoint_name,
+                named_struct(
+                    'messages', array(named_struct('role', 'user', 'content', prompt)),
+                    'custom_inputs', named_struct('schema', schema),
+                    'max_tokens', 512
+                ),
+                returnType => 'STRUCT<choices: ARRAY<STRUCT<message: STRUCT<content: STRING>>>>',
+                failOnError => false
+            ) AS _ai_response,
+            :inference_ts AS inference_ts
+        FROM {source}
+        """,
+        args={"endpoint_name": ENDPOINT_NAME, "inference_ts": inference_ts},
+    )
+
+
+def validate_endpoint_row(row):
+    response = row["_ai_response"]
+    if response["errorMessage"]:
+        raise RuntimeError(f"ai_query endpoint request failed: {response['errorMessage']}")
+    result = response["result"]
+    if not result or not result["choices"]:
+        raise RuntimeError("ai_query returned no chat completion")
+    content = result["choices"][0]["message"]["content"]
+    validate(instance=json.loads(content), schema=json.loads(row["schema"]))
+
+
+probe = query_endpoint(datetime.now(timezone.utc).isoformat(), row_limit=1).first()
+if probe is None:
+    raise ValueError(f"Input table is empty: {INPUT_TABLE_FQN}")
+validate_endpoint_row(probe)
+print("✓ SQL endpoint preflight passed")
+
+# COMMAND ----------
+
 # DBTITLE 1,Load Registered Model
-model = mlflow.pyfunc.load_model(MODEL_URI)
+def load_driver_model(model_uri):
+    """Load on the driver's GPU without torchrun or automatic graph compilation."""
+    import os
+    import torch  # DBR initializes WORLD_SIZE during the first PyTorch import.
+
+    # DBR ML exposes WORLD_SIZE even for a single-GPU notebook. Transformers
+    # 4.53 interprets any nonzero value with device_map="auto" as tensor
+    # parallelism, which breaks Gemma3's tied output head during warm-up.
+    world_size = os.environ.pop("WORLD_SIZE", None)
+    print(f"Loading on the driver GPU (runtime WORLD_SIZE={world_size!r})")
+    try:
+        loaded = mlflow.pyfunc.load_model(model_uri)
+        # The 17.3 runtime's PyTorch 2.7 repeatedly captured CUDA graphs for
+        # changing prompt lengths, leaving this small batch CPU-bound for minutes.
+        # This changes only the local model instance, not its serving artifact.
+        loaded.get_raw_model().model.generation_config.disable_compile = True
+        print("Driver generation uses eager execution (disable_compile=True)")
+        return loaded
+    finally:
+        if world_size is not None:
+            os.environ["WORLD_SIZE"] = world_size
+
+
+model = load_driver_model(MODEL_URI)
 print(f"✓ Loaded model: {MODEL_URI}")
 
 # COMMAND ----------
 
 # DBTITLE 1,Run Batch Inference + Log Traces to MLflow
-from pyspark.sql import functions as F
-
 input_df = spark.table(INPUT_TABLE_FQN)
 input_pd = input_df.toPandas()
 inference_ts = datetime.now(timezone.utc).isoformat()
@@ -151,6 +221,7 @@ def predict_in_chunks(model, input_pd, chunk_size: int):
                 {
                     "messages": [{"role": "user", "content": row["prompt"]}],
                     "custom_inputs": {"schema": row["schema"]},
+                    "max_tokens": 512,
                 }
             )
             outputs.append(result["choices"][0]["message"]["content"])
@@ -325,26 +396,25 @@ try:
 except Exception:
     pass
 
-# ChatModel endpoints work with ai_query() which handles the chat format natively.
+# Custom ChatModel endpoints accept the full chat payload as ai_query's request.
 # ENDPOINT_NAME uses the same base-name + workload-suffix convention as
-# src/medgemma/02_deploy_endpoint.py and src/medgemma/03_benchmark_endpoint.py.
+# src/models/medgemma/xgrammar/02_deploy_endpoint.py and src/models/medgemma/xgrammar/03_benchmark_endpoint.py.
 udf_inference_ts = datetime.now(timezone.utc).isoformat()
 
-# ai_query sends each row as a chat request to the serving endpoint
-spark.sql(f"""
-    CREATE OR REPLACE TABLE {OUTPUT_TABLE_UDF_FQN} AS
-    SELECT
-        *,
-        ai_query(
-            '{ENDPOINT_NAME}',
-            prompt,
-            modelParameters => named_struct('custom_inputs', named_struct('schema', schema))
-        ) AS extracted_json,
-        '{udf_inference_ts}' AS inference_ts
-    FROM {INPUT_TABLE_FQN}
-""")
-
+# Per-row schemas belong in request.custom_inputs. The modelParameters argument
+# is reserved for foundation model endpoints and cannot contain column values.
 t0_udf = time.perf_counter()
+udf_result = query_endpoint(udf_inference_ts)
+udf_result = (
+    udf_result
+    .withColumn("extracted_json", F.col("_ai_response.result.choices")[0]["message"]["content"])
+    .withColumn("parse_error", F.col("_ai_response.errorMessage"))
+    .drop("_ai_response")
+)
+
+# Writing materializes all ai_query calls; include that work in the timing.
+udf_result.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(OUTPUT_TABLE_UDF_FQN)
+
 # Force materialization
 udf_row_count = spark.table(OUTPUT_TABLE_UDF_FQN).count()
 t1_udf = time.perf_counter()
@@ -394,3 +464,19 @@ with mlflow.start_run(run_id=run_id):
         })
         print(f"✓ MLflow ai_query run (nested): {udf_run.info.run_id}  parse_success_rate={udf_parse_rate:.1%}")
     mlflow.log_metric("pandas_vs_ai_query_speedup", speedup)
+
+for table_name in [OUTPUT_TABLE_FQN, OUTPUT_TABLE_UDF_FQN]:
+    rows = spark.table(table_name).select("id", "schema", "extracted_json", "parse_error").collect()
+    if len(rows) != existing_count or not rows:
+        raise AssertionError(f"Invalid row count in {table_name}: {len(rows)}; expected {existing_count}")
+    for row in rows:
+        if row["parse_error"] or row["extracted_json"] is None:
+            raise RuntimeError(f"Inference failed in {table_name} for {row['id']}: {row['parse_error'] or 'empty response'}")
+        validate(instance=json.loads(row["extracted_json"]), schema=json.loads(row["schema"]))
+dbutils.notebook.exit(json.dumps({
+    "output_tables": [OUTPUT_TABLE_FQN, OUTPUT_TABLE_UDF_FQN],
+    "rows_per_table": existing_count,
+    "mlflow_run_id": run_id,
+    "pandas_elapsed_s": pandas_elapsed,
+    "ai_query_elapsed_s": udf_elapsed,
+}))

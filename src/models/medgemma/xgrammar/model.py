@@ -52,7 +52,11 @@ class MedGemmaChatModel(mlflow.pyfunc.ChatModel):
 
         if schema_str:
             if schema_str not in self._grammar_cache:
-                self._grammar_cache[schema_str] = self.compiler.compile_json_schema(schema_str)
+                # Unbounded whitespace can consume the token budget before
+                # the model finishes an otherwise schema-constrained object.
+                self._grammar_cache[schema_str] = self.compiler.compile_json_schema(
+                    schema_str, any_whitespace=False
+                )
             compiled = self._grammar_cache[schema_str]
         else:
             compiled = None
@@ -61,13 +65,15 @@ class MedGemmaChatModel(mlflow.pyfunc.ChatModel):
         prompt_tokens = inputs["input_ids"].shape[1]
 
         logits_processors = [xgr.contrib.hf.LogitsProcessor(compiled)] if compiled else None
+        sampling = {"do_sample": temperature > 0}
+        if temperature > 0:
+            sampling["temperature"] = temperature
 
         with torch.no_grad():
             outputs = self.model.generate(
                 **inputs,
                 max_new_tokens=max_new_tokens,
-                do_sample=True,
-                temperature=temperature,
+                **sampling,
                 logits_processor=logits_processors,
                 pad_token_id=self.tokenizer.eos_token_id,
             )
@@ -87,7 +93,7 @@ class MedGemmaChatModel(mlflow.pyfunc.ChatModel):
         schema_str = json.dumps(json.loads(schema_val)) if schema_val else None
 
         max_tokens = params.max_tokens if params and params.max_tokens else 256
-        temperature = params.temperature if params and params.temperature else 0.7
+        temperature = params.temperature if params and params.temperature is not None else 0.7
 
         # Build chat messages for the template
         chat_messages = [{"role": m.role, "content": m.content} for m in messages]

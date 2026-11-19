@@ -1,0 +1,77 @@
+resources:
+  jobs:
+    medgemma_register:
+      name: "[medgemma] 1. Register Model"
+      environments:
+        - environment_key: sgc
+          spec:
+            client: "4"
+      tasks:
+        - task_key: register
+          environment_key: sgc
+          compute:
+            hardware_accelerator: GPU_1xA10
+          notebook_task:
+            notebook_path: ../src/models/medgemma/xgrammar/01_register.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              registered_model_name: ${var.medgemma_registered_model_name}
+              hf_model_name: "google/medgemma-1.5-4b-it"
+
+    medgemma_deploy:
+      name: "[medgemma] 2. Deploy Endpoint"
+      parameters:
+        - name: workload_type
+          default: GPU_MEDIUM  # GPU_SMALL=T4, GPU_MEDIUM=A10, GPU_LARGE=A100
+        - name: workload_size
+          default: Small
+        - name: model_version
+          default: ""
+      environments:
+        - environment_key: sgc
+          spec:
+            client: "4"
+      tasks:
+        - task_key: deploy
+          environment_key: sgc
+          compute:
+            hardware_accelerator: GPU_1xA10
+          notebook_task:
+            notebook_path: ../src/models/medgemma/xgrammar/02_deploy_endpoint.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              registered_model_name: ${var.medgemma_registered_model_name}
+              model_version: "{{job.parameters.model_version}}"
+              endpoint_name: ${var.medgemma_endpoint_name}
+              workload_type: "{{job.parameters.workload_type}}"
+              workload_size: "{{job.parameters.workload_size}}"
+              scale_to_zero: "false"
+
+    medgemma_benchmark:
+      name: "[medgemma] 3. Benchmark Endpoint"
+      parameters:
+        - name: workload_type
+          default: GPU_MEDIUM  # GPU_SMALL=T4, GPU_MEDIUM=A10, GPU_LARGE=A100
+      environments:
+        - environment_key: sgc
+          spec:
+            client: "4"
+      tasks:
+        - task_key: benchmark
+          environment_key: sgc
+          compute:
+            hardware_accelerator: GPU_1xA10
+          notebook_task:
+            notebook_path: ../src/models/medgemma/xgrammar/03_benchmark_endpoint.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              endpoint_name: ${var.medgemma_endpoint_name}
+              workload_type: "{{job.parameters.workload_type}}"
+              input_table: "medgemma_batch_input"
+              num_rows: "200"
+              request_batch_size: "1"
+              concurrency_levels: "1,4"
+              warmup_requests: "10"

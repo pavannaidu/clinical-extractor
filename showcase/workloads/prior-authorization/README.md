@@ -23,4 +23,4 @@ Prior authorization workflows depend on consistent structured outputs that can b
 ## Execution Layer
 
 - App comparison cockpit: `src/app`
-- Domain model path: `src/medgemma`
+- Domain model path: `src/models/medgemma/xgrammar`

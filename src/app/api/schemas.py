@@ -514,3 +514,117 @@ class PresetUpdate(BaseModel):
         if v is None:
             return v
         return _validate_json_schema_text(v)
+
+
+class EvaluationColumn(BaseModel):
+    name: str
+    data_type: str
+
+
+class EvaluationDiscoveryResponse(BaseModel):
+    items: list[str]
+
+
+class EvaluationColumnsResponse(BaseModel):
+    columns: list[EvaluationColumn]
+
+
+class EvaluationDatasetRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, protected_namespaces=())
+
+    table_name: str = Field(..., min_length=5, max_length=512)
+    input_column: str = Field(..., min_length=1, max_length=255)
+    ground_truth_column: str = Field(..., min_length=1, max_length=255)
+    identifier_column: str | None = Field(default=None, max_length=255)
+    json_schema: str = Field(..., alias="schema_json", max_length=20000)
+    row_limit: int = Field(default=100, ge=1, le=100)
+
+    @field_validator("json_schema")
+    @classmethod
+    def validate_schema_json(cls, value: str) -> str:
+        return _validate_json_schema_text(value)
+
+
+class EvaluationPreflightSample(BaseModel):
+    record_id: str
+    input_preview: str
+    ground_truth: dict[str, Any]
+
+
+class EvaluationPreflightResponse(BaseModel):
+    row_count: int
+    valid_rows: int
+    invalid_rows: int
+    samples: list[EvaluationPreflightSample]
+    warnings: list[str] = Field(default_factory=list)
+
+
+class EvaluationCreateRequest(EvaluationDatasetRequest):
+    name: str = Field(..., min_length=1, max_length=120)
+    model: str = Field(..., min_length=1, max_length=200)
+    preset_id: str = Field(..., min_length=1, max_length=200)
+    system_prompt: str = Field(default="", max_length=4000)
+    enable_groundedness: bool = False
+    enable_completeness: bool = False
+
+
+class EvaluationMetrics(BaseModel):
+    overall_field_accuracy: float | None = None
+    fully_correct_percentage: float | None = None
+    schema_valid_percentage: float | None = None
+    inference_success_rate: float | None = None
+    average_latency_ms: float | None = None
+    field_scores: dict[str, float] = Field(default_factory=dict)
+    judge_metrics: dict[str, Any] = Field(default_factory=dict)
+
+
+class EvaluationResultSummary(BaseModel):
+    record_id: str
+    status: Literal["completed", "failed"]
+    latency_ms: float | None = None
+    matched_fields: int = 0
+    total_fields: int = 0
+    mismatched_paths: list[str] = Field(default_factory=list)
+    schema_valid: bool = False
+    mlflow_trace_id: str | None = None
+    error_message: str | None = None
+
+
+class EvaluationRunResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, protected_namespaces=())
+
+    run_id: str
+    name: str
+    status: Literal[
+        "queued", "running", "completed", "failed", "cancelled", "interrupted"
+    ]
+    table_name: str
+    input_column: str
+    ground_truth_column: str
+    identifier_column: str | None = None
+    model: str
+    preset_id: str
+    json_schema: str = Field(..., alias="schema_json")
+    system_prompt: str = ""
+    row_limit: int
+    enable_groundedness: bool = False
+    enable_completeness: bool = False
+    total_rows: int = 0
+    completed_rows: int = 0
+    succeeded_rows: int = 0
+    failed_rows: int = 0
+    mlflow_experiment_id: str | None = None
+    mlflow_run_id: str | None = None
+    metrics: EvaluationMetrics = Field(default_factory=EvaluationMetrics)
+    error_code: str | None = None
+    error_message: str | None = None
+    created_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    updated_at: datetime
+
+
+class EvaluationReportResponse(BaseModel):
+    run: EvaluationRunResponse
+    results: list[EvaluationResultSummary]
+    mlflow_url: str | None = None

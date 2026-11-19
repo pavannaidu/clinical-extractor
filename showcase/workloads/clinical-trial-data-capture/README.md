@@ -23,6 +23,6 @@ Clinical trial workflows often require repeatable extraction against protocol-de
 
 ## Execution Layer
 
-- Domain model path: `src/medgemma`
-- Fine-tuning path: `src/finetune`
-- Batch path: `src/batch`
+- Domain model path: `src/models/medgemma/xgrammar`
+- Fine-tuning example: `src/models/medgemma/finetune.py`
+- Batch path: `src/models/medgemma/batch`

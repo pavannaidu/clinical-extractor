@@ -24,5 +24,5 @@ This is the most direct way to show the structured-output gap: many customers al
 ## Execution Layer
 
 - App comparison cockpit: `src/app`
-- Domain model path: `src/medgemma`
-- Batch path: `src/batch`
+- Domain model path: `src/models/medgemma/xgrammar`
+- Batch path: `src/models/medgemma/batch`

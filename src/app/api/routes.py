@@ -21,13 +21,24 @@ from jsonschema import Draft202012Validator, FormatChecker
 from jsonschema.exceptions import ValidationError as JsonSchemaValidationError
 import requests
 
+from .ai_extract import (
+    AI_EXTRACT_DISPLAY_NAME,
+    AI_EXTRACT_TARGET_ID,
+    AiExtractResponseError,
+    AiExtractSchemaError,
+    build_ai_extract_request,
+    parse_ai_extract_response,
+)
+from .json_output import (
+    format_schema_validation_detail,
+    normalize_prediction_to_schema,
+    reject_non_json_constant,
+    strict_response_schema,
+    strip_json_markdown_fence,
+)
 from .schemas import (
     InferenceRequest,
     InferenceResponse,
-    ExtractionCitation,
-    ExtractionCitationBox,
-    ExtractionEvidence,
-    ExtractionEvidenceField,
     LoadTestConfig,
     LoadTestOutputEstimateRequest,
     LoadTestOutputEstimateResponse,
@@ -79,14 +90,6 @@ MODEL_SERVICE_LIST_PATH = (
     "/api/2.1/unity-catalog/model-services?parent=schemas/system.ai"
 )
 MODEL_SERVICE_CHAT_PATH = "/ai-gateway/mlflow/v1/chat/completions"
-AI_EXTRACT_TARGET_ID = "databricks-ai-extract"
-AI_EXTRACT_DISPLAY_NAME = "Agent Bricks · Information Extraction"
-AI_EXTRACT_PATH = "/api/2.0/ai-functions/ai-extract"
-AI_EXTRACT_VERSION = "2.1"
-AI_EXTRACT_MAX_FIELDS = 256
-AI_EXTRACT_MAX_DEPTH = 12
-AI_EXTRACT_MAX_ENUM_VALUES = 500
-AI_EXTRACT_MAX_INSTRUCTIONS_LENGTH = 20_000
 AI_EXTRACT_MAX_RETRY_DELAY_S = 10.0
 _MODEL_SERVICE_NAMES_CACHE: set[str] = set()
 CUSTOM_MODEL_UNAVAILABLE_MESSAGE = (
@@ -106,10 +109,7 @@ _MODEL_SELECTION_MEMORY: dict[str, list[dict]] | list[dict] | None = {}
 _DEFAULT_MODEL_SETTINGS_OWNER = "shared"
 _OUTPUT_ESTIMATE_MEMORY: dict[tuple[str, str], dict] = {}
 
-BENCHMARK_TOTAL_REQUESTS = 150
-BENCHMARK_MAX_WORKERS = 10
 BENCHMARK_MAX_RETRIES = 10
-BENCHMARK_MAX_TOKENS = 4096
 LOAD_TEST_MAX_REQUESTS = 1000
 LOAD_TEST_MAX_BURST_REQUESTS = 150
 LOAD_TEST_MAX_WORKERS = 10
@@ -538,40 +538,6 @@ def _save_model_selection(
 def _error_response(status: int, code: str, message: str, detail: str | None = None) -> JSONResponse:
     body = ErrorResponse(error_code=code, message=message, detail=detail)
     return JSONResponse(status_code=status, content=body.model_dump())
-
-
-def _strip_json_markdown_fence(content: str) -> str:
-    stripped = content.strip()
-    if not stripped.startswith("```") or not stripped.endswith("```"):
-        return stripped
-
-    opening_line_end = stripped.find("\n")
-    if opening_line_end == -1:
-        return stripped
-
-    opening_fence = stripped[:opening_line_end].strip().lower()
-    if opening_fence not in {"```", "```json"}:
-        return stripped
-
-    return stripped[opening_line_end + 1 : -3].strip()
-
-
-def _reject_non_json_constant(value: str) -> None:
-    raise ValueError(f"{value} is not valid JSON")
-
-
-def _format_schema_validation_detail(error: JsonSchemaValidationError) -> str:
-    path = "$"
-    for part in error.absolute_path:
-        path += f"[{part}]" if isinstance(part, int) else f"[{json.dumps(str(part))}]"
-
-    if error.validator in {"required", "additionalProperties"}:
-        reason = error.message
-    elif error.validator == "type":
-        reason = f"expected type {error.validator_value!r}"
-    else:
-        reason = f"{error.validator} constraint was not satisfied"
-    return f"At {path}: {reason}"
 
 
 def _normalize_choice_content(content):
@@ -1087,243 +1053,6 @@ def _build_messages(prompt: str, system_prompt: str = "") -> list[dict[str, str]
     return messages
 
 
-class _AiExtractSchemaError(ValueError):
-    pass
-
-
-@dataclass
-class _AiExtractSchema:
-    schema: dict[str, dict]
-    root_description: str
-    warnings: list[str]
-
-
-_AI_EXTRACT_SHAPE_KEYWORDS = {
-    "$ref",
-    "$dynamicRef",
-    "allOf",
-    "anyOf",
-    "oneOf",
-    "not",
-    "if",
-    "then",
-    "else",
-    "dependentSchemas",
-    "prefixItems",
-    "contains",
-    "unevaluatedItems",
-    "unevaluatedProperties",
-}
-_AI_EXTRACT_SENT_KEYS = {"type", "description", "properties", "items", "enum"}
-
-
-def _ai_extract_schema_type(value, path: str, *, root: bool = False) -> tuple[str, bool]:
-    nullable = False
-    if isinstance(value, str):
-        concrete_type = value
-    elif isinstance(value, list):
-        if root or len(value) != 2 or "null" not in value:
-            raise _AiExtractSchemaError(
-                f"{path}.type must be one supported type with optional null."
-            )
-        concrete = [item for item in value if item != "null"]
-        if len(concrete) != 1 or not isinstance(concrete[0], str):
-            raise _AiExtractSchemaError(
-                f"{path}.type must be one supported type with optional null."
-            )
-        concrete_type = concrete[0]
-        nullable = True
-    else:
-        raise _AiExtractSchemaError(f"{path}.type is required for AI Extract.")
-
-    supported = {"object"} if root else {
-        "string",
-        "integer",
-        "number",
-        "boolean",
-        "object",
-        "array",
-    }
-    if concrete_type not in supported:
-        raise _AiExtractSchemaError(
-            f"{path}.type '{concrete_type}' is not supported by AI Extract."
-        )
-    return concrete_type, nullable
-
-
-def _convert_json_schema_for_ai_extract(schema_json: str) -> _AiExtractSchema:
-    parsed = json.loads(schema_json)
-    if not isinstance(parsed, dict):
-        raise _AiExtractSchemaError("The schema root must be an object.")
-    root_type, _ = _ai_extract_schema_type(parsed.get("type"), "$", root=True)
-    if root_type != "object":
-        raise _AiExtractSchemaError("The schema root must have type object.")
-
-    field_count = 0
-    nullable_seen = False
-    required_seen = False
-    validation_only_keys: set[str] = set()
-    enum_value_count = 0
-
-    def reject_shape_keywords(node: dict, path: str) -> None:
-        found = sorted(_AI_EXTRACT_SHAPE_KEYWORDS.intersection(node))
-        if found:
-            raise _AiExtractSchemaError(
-                f"{path} uses unsupported JSON Schema keyword '{found[0]}'."
-            )
-
-    def record_omitted_keywords(node: dict) -> None:
-        for key in node:
-            if key not in _AI_EXTRACT_SENT_KEYS and key not in _AI_EXTRACT_SHAPE_KEYWORDS:
-                validation_only_keys.add(key)
-
-    def convert_object(node: dict, path: str, depth: int) -> dict[str, dict]:
-        nonlocal field_count, nullable_seen, required_seen
-        if depth > AI_EXTRACT_MAX_DEPTH:
-            raise _AiExtractSchemaError(
-                f"{path} exceeds AI Extract's {AI_EXTRACT_MAX_DEPTH}-level nesting limit."
-            )
-        reject_shape_keywords(node, path)
-        record_omitted_keywords(node)
-        if "required" in node:
-            required_seen = True
-        properties = node.get("properties")
-        if not isinstance(properties, dict):
-            raise _AiExtractSchemaError(f"{path}.properties must be an object.")
-
-        converted: dict[str, dict] = {}
-        for field_name, field_schema in properties.items():
-            field_path = f"{path}.properties[{field_name!r}]"
-            if not isinstance(field_name, str) or not field_name:
-                raise _AiExtractSchemaError(f"{path} contains an empty field name.")
-            if len(field_name) > 150:
-                raise _AiExtractSchemaError(
-                    f"{field_path} exceeds AI Extract's 150-character field-name limit."
-                )
-            if not isinstance(field_schema, dict):
-                raise _AiExtractSchemaError(f"{field_path} must be an object schema.")
-            field_count += 1
-            if field_count > AI_EXTRACT_MAX_FIELDS:
-                raise _AiExtractSchemaError(
-                    f"The schema exceeds AI Extract's {AI_EXTRACT_MAX_FIELDS}-field limit."
-                )
-            converted[field_name] = convert_field(field_schema, field_path, depth)
-        return converted
-
-    def convert_field(node: dict, path: str, depth: int) -> dict:
-        nonlocal nullable_seen, enum_value_count
-        reject_shape_keywords(node, path)
-        record_omitted_keywords(node)
-        field_type, nullable = _ai_extract_schema_type(node.get("type"), path)
-        nullable_seen = nullable_seen or nullable
-
-        description = node.get("description")
-        if description is not None and not isinstance(description, str):
-            raise _AiExtractSchemaError(f"{path}.description must be a string.")
-
-        result: dict = {"type": field_type}
-        if isinstance(description, str) and description.strip():
-            result["description"] = description.strip()
-
-        if "enum" in node:
-            if field_type != "string" or not isinstance(node["enum"], list):
-                raise _AiExtractSchemaError(
-                    f"{path}.enum must be a list of string labels."
-                )
-            labels = [value for value in node["enum"] if value is not None]
-            if not labels or any(not isinstance(value, str) for value in labels):
-                raise _AiExtractSchemaError(
-                    f"{path}.enum must contain at least one string label."
-                )
-            enum_value_count += len(labels)
-            if enum_value_count > AI_EXTRACT_MAX_ENUM_VALUES:
-                raise _AiExtractSchemaError(
-                    "The schema exceeds AI Extract's "
-                    f"{AI_EXTRACT_MAX_ENUM_VALUES}-enum-value limit."
-                )
-            result["type"] = "enum"
-            result["labels"] = labels
-            return result
-
-        if field_type == "object":
-            result["properties"] = convert_object(node, path, depth + 1)
-        elif field_type == "array":
-            items = node.get("items")
-            if not isinstance(items, dict):
-                raise _AiExtractSchemaError(
-                    f"{path}.items must be one object schema; tuple arrays are unsupported."
-                )
-            result["items"] = convert_field(items, f"{path}.items", depth + 1)
-        return result
-
-    converted_schema = convert_object(parsed, "$", 1)
-    warnings: list[str] = []
-    if required_seen or "additionalProperties" in validation_only_keys:
-        warnings.append(
-            "Required-property and additional-property rules are validated by the app after extraction."
-        )
-    if nullable_seen:
-        warnings.append(
-            "Nullable JSON Schema types are validated after extraction; AI Extract may return null when a value is absent."
-        )
-    other_keys = sorted(
-        validation_only_keys
-        - {"required", "additionalProperties", "type", "description", "properties", "items", "enum"}
-    )
-    if other_keys:
-        warnings.append(
-            "These JSON Schema keywords are validated after extraction only: "
-            + ", ".join(other_keys)
-            + "."
-        )
-
-    root_description = parsed.get("description")
-    return _AiExtractSchema(
-        schema=converted_schema,
-        root_description=(
-            root_description.strip() if isinstance(root_description, str) else ""
-        ),
-        warnings=warnings,
-    )
-
-
-def _build_ai_extract_request(
-    *,
-    prompt: str,
-    schema_json: str,
-    system_prompt: str,
-    precision: bool,
-    enable_citations: bool = False,
-    enable_confidence_scores: bool = False,
-) -> tuple[str, dict, list[str]]:
-    converted = _convert_json_schema_for_ai_extract(schema_json)
-    instruction_parts = [
-        value
-        for value in (system_prompt.strip(), converted.root_description)
-        if value
-    ]
-    options: dict[str, object] = {
-        "version": AI_EXTRACT_VERSION,
-        "enable_citations": enable_citations,
-        "enable_confidence_scores": enable_confidence_scores,
-    }
-    if instruction_parts:
-        instructions = "\n\n".join(instruction_parts)
-        if len(instructions) > AI_EXTRACT_MAX_INSTRUCTIONS_LENGTH:
-            raise _AiExtractSchemaError(
-                "System instructions plus the root schema description exceed "
-                f"AI Extract's {AI_EXTRACT_MAX_INSTRUCTIONS_LENGTH:,}-character limit."
-            )
-        options["instructions"] = instructions
-    if precision:
-        options["mode"] = "precision"
-    return (
-        AI_EXTRACT_PATH,
-        {"content": prompt, "schema": converted.schema, "options": options},
-        converted.warnings,
-    )
-
-
 def _resolve_endpoint_contract(endpoint_name: str, contracts: dict[str, str] | None = None) -> str:
     contract_map = contracts if contracts is not None else _load_endpoint_contracts()
     if endpoint_name in contract_map:
@@ -1400,6 +1129,7 @@ def _build_inference_request(
     messages = _build_messages(prompt, system_prompt)
 
     if contract == CONTRACT_PPT_JSON_SCHEMA:
+        response_schema = strict_response_schema(json.loads(schema_json))
         if _is_model_service_name(endpoint_name):
             return (
                 MODEL_SERVICE_CHAT_PATH,
@@ -1412,7 +1142,7 @@ def _build_inference_request(
                         "json_schema": {
                             "name": "extraction",
                             "strict": True,
-                            "schema": json.loads(schema_json),
+                            "schema": response_schema,
                         },
                     },
                 },
@@ -1427,7 +1157,7 @@ def _build_inference_request(
                     "json_schema": {
                         "name": "extraction",
                         "strict": True,
-                        "schema": json.loads(schema_json),
+                        "schema": response_schema,
                     },
                 },
             },
@@ -1475,164 +1205,6 @@ async def _invoke_endpoint(
         ),
         timeout=timeout_s,
     )
-
-
-class _AiExtractResponseError(ValueError):
-    pass
-
-
-_AI_EXTRACT_FIELD_WRAPPER_KEYS = {
-    "value",
-    "confidence_score",
-    "confidence",
-    "citation_ids",
-}
-
-
-def _ai_extract_child_path(path: str, key: str) -> str:
-    return f"{path}[{json.dumps(key, ensure_ascii=False)}]"
-
-
-def _unwrap_ai_extract_value(
-    value,
-    *,
-    path: str = "$",
-    fields: list[ExtractionEvidenceField] | None = None,
-):
-    evidence_fields = fields if fields is not None else []
-    if (
-        isinstance(value, dict)
-        and "value" in value
-        and set(value).issubset(_AI_EXTRACT_FIELD_WRAPPER_KEYS)
-    ):
-        clean_value = _unwrap_ai_extract_value(
-            value.get("value"),
-            path=path,
-            fields=evidence_fields,
-        )
-        confidence = value.get("confidence_score", value.get("confidence"))
-        if not isinstance(confidence, (int, float)) or isinstance(confidence, bool):
-            confidence = None
-        citation_ids = value.get("citation_ids")
-        if not isinstance(citation_ids, list):
-            citation_ids = []
-        citation_ids = [
-            citation_id
-            for citation_id in citation_ids
-            if isinstance(citation_id, int) and not isinstance(citation_id, bool)
-        ]
-        evidence_fields.append(
-            ExtractionEvidenceField(
-                path=path,
-                value=clean_value,
-                confidence_score=(float(confidence) if confidence is not None else None),
-                citation_ids=citation_ids,
-            )
-        )
-        return clean_value
-    if isinstance(value, dict):
-        return {
-            key: _unwrap_ai_extract_value(
-                child,
-                path=_ai_extract_child_path(path, str(key)),
-                fields=evidence_fields,
-            )
-            for key, child in value.items()
-        }
-    if isinstance(value, list):
-        return [
-            _unwrap_ai_extract_value(
-                child,
-                path=f"{path}[{index}]",
-                fields=evidence_fields,
-            )
-            for index, child in enumerate(value)
-        ]
-    return value
-
-
-def _parse_ai_extract_citations(metadata: dict) -> list[ExtractionCitation]:
-    raw_citations = metadata.get("citations")
-    if not isinstance(raw_citations, list):
-        return []
-    citations: list[ExtractionCitation] = []
-    for raw in raw_citations:
-        if not isinstance(raw, dict):
-            continue
-        citation_id = raw.get("id")
-        if not isinstance(citation_id, int) or isinstance(citation_id, bool):
-            continue
-        start = raw.get("start")
-        stop = raw.get("stop")
-        if not isinstance(start, int) or isinstance(start, bool):
-            start = None
-        if not isinstance(stop, int) or isinstance(stop, bool):
-            stop = None
-        boxes: list[ExtractionCitationBox] = []
-        if isinstance(raw.get("bbox"), list):
-            for raw_box in raw["bbox"]:
-                if not isinstance(raw_box, dict):
-                    continue
-                coord = raw_box.get("coord")
-                page_id = raw_box.get("page_id")
-                if (
-                    isinstance(coord, list)
-                    and len(coord) == 4
-                    and all(isinstance(item, int) and not isinstance(item, bool) for item in coord)
-                    and isinstance(page_id, int)
-                    and not isinstance(page_id, bool)
-                ):
-                    boxes.append(ExtractionCitationBox(coord=coord, page_id=page_id))
-        citations.append(
-            ExtractionCitation(
-                id=citation_id,
-                start=start,
-                stop=stop,
-                bbox=boxes or None,
-            )
-        )
-    return citations
-
-
-def _parse_ai_extract_response(resp_body) -> tuple[object, ExtractionEvidence]:
-    if not isinstance(resp_body, dict):
-        raise _AiExtractResponseError("AI Extract returned an invalid response.")
-    error_message = resp_body.get("error_message")
-    if isinstance(error_message, str) and error_message.strip():
-        raise _AiExtractResponseError(error_message.strip())
-    if "response" not in resp_body:
-        raise _AiExtractResponseError("AI Extract returned no extraction response.")
-    response = resp_body["response"]
-    if not isinstance(response, dict):
-        raise _AiExtractResponseError("AI Extract returned an invalid extraction response.")
-
-    fields: list[ExtractionEvidenceField] = []
-    # The top-level response is always the schema's field map. Unwrap each
-    # field independently so a legitimate root field named "value" is not
-    # mistaken for AI Extract's per-field wrapper object.
-    prediction = {
-        key: _unwrap_ai_extract_value(
-            value,
-            path=_ai_extract_child_path("$", str(key)),
-            fields=fields,
-        )
-        for key, value in response.items()
-    }
-    metadata = resp_body.get("metadata")
-    if not isinstance(metadata, dict):
-        metadata = {}
-    evidence = ExtractionEvidence(
-        version=(metadata.get("version") if isinstance(metadata.get("version"), str) else None),
-        mode=(metadata.get("mode") if isinstance(metadata.get("mode"), str) else None),
-        chunk_type=(
-            metadata.get("chunk_type")
-            if isinstance(metadata.get("chunk_type"), str)
-            else None
-        ),
-        fields=fields,
-        citations=_parse_ai_extract_citations(metadata),
-    )
-    return prediction, evidence
 
 
 class _LoadTestHttpError(Exception):
@@ -1769,7 +1341,7 @@ async def _run_ai_extract_inference(
     workspace_client: WorkspaceClient,
 ):
     try:
-        route_path, payload, schema_warnings = _build_ai_extract_request(
+        route_path, payload, schema_warnings = build_ai_extract_request(
             prompt=req.prompt,
             schema_json=req.json_schema,
             system_prompt=req.system_prompt,
@@ -1782,7 +1354,7 @@ async def _run_ai_extract_inference(
                 and req.ai_extract_options.enable_confidence_scores
             ),
         )
-    except (json.JSONDecodeError, _AiExtractSchemaError) as exc:
+    except (json.JSONDecodeError, AiExtractSchemaError) as exc:
         return _error_response(
             422,
             "AI_EXTRACT_SCHEMA_UNSUPPORTED",
@@ -1792,14 +1364,18 @@ async def _run_ai_extract_inference(
 
     resp_body = None
     latency_ms = 0.0
+    deadline = time.monotonic() + MAX_INFERENCE_TIMEOUT_S
     for attempt in range(1 + MAX_RETRIES):
         try:
+            remaining_timeout_s = deadline - time.monotonic()
+            if remaining_timeout_s <= 0:
+                raise asyncio.TimeoutError
             start = time.perf_counter()
             resp_body = await _invoke_load_test_endpoint_once(
                 workspace_client,
                 route_path,
                 payload,
-                timeout_s=MAX_INFERENCE_TIMEOUT_S,
+                timeout_s=remaining_timeout_s,
             )
             latency_ms = (time.perf_counter() - start) * 1000
             break
@@ -1821,7 +1397,11 @@ async def _run_ai_extract_inference(
             )
             if retryable and attempt < MAX_RETRIES:
                 delay = retry_after if retry_after is not None else RETRY_BACKOFF_S * (attempt + 1)
-                await asyncio.sleep(min(max(delay, 0.0), AI_EXTRACT_MAX_RETRY_DELAY_S))
+                await asyncio.sleep(min(
+                    max(delay, 0.0),
+                    AI_EXTRACT_MAX_RETRY_DELAY_S,
+                    max(0.0, deadline - time.monotonic()),
+                ))
                 continue
             if status_code in {401, 403}:
                 logger.exception("AI Extract permission denied")
@@ -1860,8 +1440,8 @@ async def _run_ai_extract_inference(
             )
 
     try:
-        prediction, evidence = _parse_ai_extract_response(resp_body)
-    except _AiExtractResponseError:
+        prediction, evidence = parse_ai_extract_response(resp_body)
+    except AiExtractResponseError:
         logger.exception("AI Extract returned an error response")
         return _error_response(
             502,
@@ -1870,8 +1450,10 @@ async def _run_ai_extract_inference(
         )
 
     try:
+        response_schema = json.loads(req.json_schema)
+        prediction = normalize_prediction_to_schema(prediction, response_schema)
         Draft202012Validator(
-            json.loads(req.json_schema),
+            response_schema,
             format_checker=FormatChecker(),
         ).validate(prediction)
     except JsonSchemaValidationError as exc:
@@ -1879,7 +1461,7 @@ async def _run_ai_extract_inference(
             502,
             "MODEL_OUTPUT_SCHEMA_MISMATCH",
             "AI Extract returned JSON that did not match the requested schema.",
-            _format_schema_validation_detail(exc),
+            format_schema_validation_detail(exc),
         )
 
     return InferenceResponse(
@@ -2265,6 +1847,10 @@ async def _run_single_load_test_request(
                 parsed_content = json.loads(content)
             else:
                 parsed_content = content
+            parsed_content = normalize_prediction_to_schema(
+                parsed_content,
+                json.loads(schema_json),
+            )
             validator.validate(parsed_content)
 
             return {
@@ -4097,14 +3683,20 @@ async def run_inference(req: InferenceRequest):
             "Model endpoint configuration is invalid.",
         )
 
+    # Retries share the request budget so we can respond before the Apps proxy
+    # times out, including when a GPU endpoint is scaling from zero.
+    deadline = time.monotonic() + options["timeout_s"]
     for attempt in range(1 + MAX_RETRIES):
         try:
+            remaining_timeout_s = deadline - time.monotonic()
+            if remaining_timeout_s <= 0:
+                raise asyncio.TimeoutError
             start = time.perf_counter()
             resp_body = await _invoke_endpoint(
                 w,
                 route_path,
                 payload,
-                timeout_s=options["timeout_s"],
+                timeout_s=remaining_timeout_s,
             )
             latency_ms = (time.perf_counter() - start) * 1000
             break
@@ -4135,7 +3727,10 @@ async def run_inference(req: InferenceRequest):
 
             if attempt < MAX_RETRIES:
                 logger.warning("Inference attempt %d failed (%s), retrying...", attempt + 1, e)
-                await asyncio.sleep(RETRY_BACKOFF_S * (attempt + 1))
+                await asyncio.sleep(min(
+                    RETRY_BACKOFF_S * (attempt + 1),
+                    max(0.0, deadline - time.monotonic()),
+                ))
                 continue
             logger.exception("Model endpoint %s failed after retries", endpoint_name)
             return _error_response(
@@ -4172,8 +3767,8 @@ async def run_inference(req: InferenceRequest):
         if isinstance(content, str):
             raw_output = content
             prediction = json.loads(
-                _strip_json_markdown_fence(content),
-                parse_constant=_reject_non_json_constant,
+                strip_json_markdown_fence(content),
+                parse_constant=reject_non_json_constant,
             )
         else:
             raw_output = json.dumps(content, allow_nan=False)
@@ -4186,14 +3781,24 @@ async def run_inference(req: InferenceRequest):
         )
 
     try:
-        response_validator = Draft202012Validator(json.loads(req.json_schema))
+        response_schema = json.loads(req.json_schema)
+        normalized_prediction = normalize_prediction_to_schema(prediction, response_schema)
+        if normalized_prediction != prediction:
+            raw_output = json.dumps(
+                normalized_prediction,
+                ensure_ascii=False,
+                indent=2,
+                allow_nan=False,
+            )
+        prediction = normalized_prediction
+        response_validator = Draft202012Validator(response_schema)
         response_validator.validate(prediction)
     except JsonSchemaValidationError as exc:
         return _error_response(
             502,
             "MODEL_OUTPUT_SCHEMA_MISMATCH",
             "The model endpoint returned JSON that did not match the requested schema.",
-            _format_schema_validation_detail(exc),
+            format_schema_validation_detail(exc),
         )
 
     if finish_reason == "length":

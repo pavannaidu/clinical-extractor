@@ -1,14 +1,8 @@
-from pathlib import Path
-import sys
+from urllib.parse import urljoin
 
 from fastapi.testclient import TestClient
 
-
-APP_ROOT = Path(__file__).resolve().parents[1]
-if str(APP_ROOT) not in sys.path:
-    sys.path.insert(0, str(APP_ROOT))
-
-from main import app  # noqa: E402
+from main import app
 
 
 def test_info_page_is_served_with_and_without_trailing_slash():
@@ -17,6 +11,7 @@ def test_info_page_is_served_with_and_without_trailing_slash():
             response = client.get(path)
 
             assert response.status_code == 200
+            assert response.url.path == "/info/"
             assert response.headers["content-type"].startswith("text/html")
             assert "<title>Structured AI in Life Sciences</title>" in response.text
             assert response.text.count("<section") == 5
@@ -25,12 +20,20 @@ def test_info_page_is_served_with_and_without_trailing_slash():
             assert 'id="slide-position"' not in response.text
             assert response.text.count('data-section="Options"') == 3
             assert 'data-scaffold-copy="true"' not in response.text
-            assert 'href="/info/assets/tokens.css"' in response.text
-            assert 'href="/info/deck.css?v=20260914-4"' in response.text
-            assert 'src="/info/deck.js"' in response.text
+            for asset in ("assets/tokens.css", "deck.css?v=20260914-4", "deck.js"):
+                assert f'="./{asset}"' in response.text
+                assert client.get(urljoin(str(response.url), f"./{asset}")).status_code == 200
 
 
-def test_info_assets_are_served_for_the_route_without_a_trailing_slash():
+def test_static_directories_redirect_to_trailing_slash_and_preserve_query():
+    with TestClient(app) as client:
+        response = client.get("/info?view=read", follow_redirects=False)
+
+        assert response.status_code == 307
+        assert response.headers["location"] == "http://testserver/info/?view=read"
+
+
+def test_info_assets_are_served():
     with TestClient(app) as client:
         for path, content_type in (
             ("/info/deck.css", "text/css"),
@@ -42,21 +45,6 @@ def test_info_assets_are_served_for_the_route_without_a_trailing_slash():
 
             assert response.status_code == 200
             assert response.headers["content-type"].startswith(content_type)
-
-
-def test_info_backup_preserves_the_previous_page():
-    with TestClient(app) as client:
-        for path in ("/info-backup", "/info-backup/"):
-            response = client.get(path)
-
-            assert response.status_code == 200
-            assert response.headers["content-type"].startswith("text/html")
-            assert "<title>Structured AI in Life Sciences</title>" in response.text
-            assert 'data-page="structured-ai-slide-deck"' in response.text
-            assert response.text.count('<section class="slide') == 5
-            assert 'data-action="previous"' in response.text
-            assert 'data-action="next"' in response.text
-            assert '.stage-frame, .stage { width: 1920px; height: 1080px; }' in response.text
 
 
 def test_unknown_frontend_route_still_uses_spa_fallback():

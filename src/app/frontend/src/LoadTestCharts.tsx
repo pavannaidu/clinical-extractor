@@ -629,26 +629,10 @@ export default function LoadTestCharts({
     <div className="load-test-chart-shell">
       <div className="load-test-chart-header">
         <div>
-          <span className="load-test-chart-kicker">{live ? "Live run" : "Observed run"}</span>
-          <h3>
-            {displayName} — {formatInteger(summary.total_completion_tokens)} cumulative
-            output tokens{live ? " so far" : ""}
-          </h3>
+          <h3>Output tokens over time{live ? " · live" : ""}</h3>
           <p>
-            {live
-              ? "Updating from completed requests. Actual output and retries share one wall-clock axis."
-              : "Actual output accumulation and request retries share one wall-clock axis."}
-            {" "}The dashed line is the configured OTPM reference trajectory.
+            {displayName} · {formatInteger(summary.total_completion_tokens)} total · {formatInteger(summary.achieved_otpm)} OTPM · {formatSeconds(summary.wall_time_s)}
           </p>
-        </div>
-        <div className="load-test-chart-meta">
-          <strong>
-            {live ? `${result.requests.length} of ` : ""}{result.config.total_requests} requests · {result.config.max_workers} max in flight · {result.config.cache_bust ? "cache-bust" : "cache reuse"} · {result.config.scheduling_mode === "target_rate" ? `${result.config.load_multiplier ?? 1}× target rate` : "burst"}
-          </strong>
-          <span>
-            {live ? "Observed throughput so far" : "Average throughput"}: {formatInteger(summary.achieved_otpm)} OTPM over {" "}
-            {formatSeconds(summary.wall_time_s)}.
-          </span>
         </div>
       </div>
 

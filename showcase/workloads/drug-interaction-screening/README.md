@@ -23,4 +23,4 @@ The extraction layer is often the prerequisite for an interaction engine. Clean 
 ## Execution Layer
 
 - App comparison cockpit: `src/app`
-- Domain model path: `src/medgemma`
+- Domain model path: `src/models/medgemma/xgrammar`

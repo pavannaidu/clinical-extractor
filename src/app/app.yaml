@@ -7,3 +7,7 @@ env:
     valueFrom: gpt-5-4-mini
   - name: LAKEBASE_ENDPOINT
     valueFrom: postgres
+  - name: DATABRICKS_WAREHOUSE_ID
+    valueFrom: evaluation-warehouse
+  - name: MLFLOW_EXPERIMENT_ID
+    valueFrom: evaluation-experiment

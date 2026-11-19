@@ -2,14 +2,18 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
-**/.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 *.egg-info/
 .coverage
+.coverage.*
+coverage.xml
 htmlcov/
 
 # Virtual envs
 .venv/
 venv/
+.test_venv/
 
 # Databricks / tooling local state
 .databricks/
@@ -17,13 +21,25 @@ venv/
 .claude/
 .codex-finalizer/
 .codex_deck_build/
+.vscode/
+.idea/
+.test-browser/
+.ui-review/
+.ui-review-workbench/
 
 # Generated local deliverables
-output/
+/output/
+/docs/archive/
+**/.pages.json
+*.bak
+*.orig
+*.swp
+*~
 
 # Frontend
-src/app/frontend/node_modules/
-src/app/frontend/dist/
+node_modules/
+dist/
+*.tsbuildinfo
 coverage/
 *.log
 
@@ -33,5 +49,5 @@ coverage/
 .env.*
 !.env.example
 
-# Keep the prebuilt SPA that Databricks Apps serves
-!src/app/static/
+# src/app/static/ is intentionally tracked: Databricks Apps serves this build.
+# Keep docs/, showcase/, and lockfiles shared; only docs/archive/ is local history.

@@ -32,6 +32,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from collections import defaultdict
 import mlflow
+from jsonschema import validate
 
 CATALOG             = dbutils.widgets.get("catalog")
 SCHEMA_NAME         = dbutils.widgets.get("schema")
@@ -93,6 +94,8 @@ def _normalise_schema(s):
         return s
 
 raw_df["schema"] = raw_df["schema"].apply(_normalise_schema)
+if raw_df.empty:
+    raise ValueError(f"No input rows available in {INPUT_TABLE_FQN}")
 
 print(f"Loaded {len(raw_df)} rows from {INPUT_TABLE_FQN}")
 print(f"Categories    : {dict(raw_df['category'].value_counts())}")
@@ -127,9 +130,13 @@ def send_request(chat_payload):
         output_tokens = usage.get("completion_tokens", 0)
         error = None
         try:
-            json.loads(content)
+            validate(instance=json.loads(content), schema=json.loads(chat_payload["custom_inputs"]["schema"]))
         except Exception as e:
-            error = str(e)
+            trailing_whitespace = len(content) - len(content.rstrip()) if isinstance(content, str) else 0
+            error = (
+                f"{type(e).__name__}: {e}; completion_tokens={output_tokens}; "
+                f"response_chars={len(content or '')}; trailing_whitespace={trailing_whitespace}"
+            )
         return latency, 1, input_tokens, output_tokens, error
     except Exception as e:
         latency = time.perf_counter() - t0
@@ -181,8 +188,9 @@ def run_level(concurrency, batches, label=""):
     sorted_lats       = sorted(latencies)
 
     def _pct(p):
-        idx = max(0, int(len(sorted_lats) * p / 100) - 1)
-        return sorted_lats[idx]
+        if len(sorted_lats) == 1:
+            return sorted_lats[0]
+        return statistics.quantiles(sorted_lats, n=100, method="inclusive")[p - 1]
 
     metrics = {
         "concurrency":          concurrency,
@@ -198,6 +206,7 @@ def run_level(concurrency, batches, label=""):
         "mean_output_tokens":   round(mean_out_tokens, 1),
         "error_count":          len(errors),
         "error_rate":           round(error_rate, 4),
+        "request_error_samples": "\n".join(errors[:5]),
         "latency_mean_s":       round(statistics.mean(latencies), 3),
         "latency_median_s":     round(statistics.median(latencies), 3),
         "latency_p90_s":        round(_pct(90), 3),
@@ -216,6 +225,10 @@ def run_level(concurrency, batches, label=""):
         f"p99={metrics['latency_p99_s']:.2f}s  "
         f"errors={len(errors)}"
     )
+    if errors:
+        print("  Request error samples:")
+        for error in errors[:5]:
+            print(f"    {error[:1000]}")
     return metrics
 
 # COMMAND ----------
@@ -309,3 +322,12 @@ with mlflow.start_run(
     print(f"  Experiment: https://fevm-pavan-naidu.cloud.databricks.com"
           f"/?o=7474645380671326#/experiments/{MLFLOW_EXPERIMENT_ID}"
           f"/runs/{parent_run.info.run_id}")
+
+failed_requests = sum(m["error_count"] for m in all_metrics)
+if failed_requests:
+    raise AssertionError(f"Benchmark had {failed_requests} failed requests; inspect MLflow run {parent_run.info.run_id}")
+dbutils.notebook.exit(json.dumps({
+    "endpoint_name": ENDPOINT_NAME,
+    "mlflow_run_id": parent_run.info.run_id,
+    "metrics": all_metrics,
+}))

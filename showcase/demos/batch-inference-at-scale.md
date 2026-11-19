@@ -6,9 +6,9 @@ Show that the same structured extraction approach can be applied across large no
 
 ## Execution Layer
 
-- Input generation: `src/batch/01_prepare_batch_input.py`
-- Spark / UDF path: `src/batch/02_batch_inference_udf.py`
-- SGC path: `src/batch/03_batch_inference_sgc.py`
+- Input generation: `src/models/medgemma/batch/01_prepare_batch_input.py`
+- Spark / UDF path: `src/models/medgemma/batch/02_batch_inference_udf.py`
+- SGC path: `src/models/medgemma/batch/03_batch_inference_sgc.py`
 
 ## Suggested Steps
 

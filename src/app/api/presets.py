@@ -4,11 +4,12 @@ from typing import Any
 
 
 def _field(field_type: str, *, nullable: bool = False, enum: list[Any] | None = None) -> dict[str, Any]:
+    """Build a sparse built-in field; missing values are omitted, not returned as null."""
     schema: dict[str, Any] = {
-        "type": [field_type, "null"] if nullable else field_type,
+        "type": field_type,
     }
     if enum is not None:
-        schema["enum"] = enum + ([None] if nullable else [])
+        schema["enum"] = enum
     return schema
 
 
@@ -30,16 +31,15 @@ def _boolean(*, nullable: bool = False) -> dict[str, Any]:
 
 def _object(properties: dict[str, Any], *, nullable: bool = False) -> dict[str, Any]:
     return {
-        "type": ["object", "null"] if nullable else "object",
+        "type": "object",
         "additionalProperties": False,
         "properties": properties,
-        "required": list(properties.keys()),
     }
 
 
 def _array(items: dict[str, Any], *, nullable: bool = False) -> dict[str, Any]:
     return {
-        "type": ["array", "null"] if nullable else "array",
+        "type": "array",
         "items": items,
     }
 
@@ -193,8 +193,8 @@ def _system_prompt(workflow: str, guidance: str) -> str:
         "Use only information explicitly supported by the source text and return one valid JSON "
         "object that matches the requested schema exactly. "
         f"{guidance} "
-        "Do not invent facts or resolve ambiguity silently. Use null for missing scalar values and "
-        "an empty array for missing collections when the schema allows it."
+        "Do not invent facts or resolve ambiguity silently. Omit fields that are not explicitly "
+        "supported by the source text; do not use null or empty placeholders for missing information."
     )
 
 
@@ -202,7 +202,7 @@ MEDICATION_ITEM = _object(
     {
         "name": _string(),
         "strength": _string(nullable=True),
-        "dosage": _string(),
+        "dosage": _string(nullable=True),
         "form": _string(nullable=True),
         "route": _string(nullable=True),
         "frequency": _string(nullable=True),
@@ -220,7 +220,7 @@ DIAGNOSIS_ITEM = _object(
     {
         "condition": _string(),
         "icd_code": _string(nullable=True),
-        "certainty": _string(enum=["confirmed", "suspected", "ruled_out"]),
+        "certainty": _string(nullable=True, enum=["confirmed", "suspected", "ruled_out"]),
         "severity": _string(nullable=True),
         "onset": _string(nullable=True),
         "status": _string(nullable=True),
@@ -805,7 +805,7 @@ PRESETS = [
                             "category": _string(
                                 enum=["disease", "syndrome", "complication", "comorbidity", "symptom", "risk_factor"]
                             ),
-                            "negated": _boolean(),
+                            "negated": _boolean(nullable=True),
                             "body_system": _string(nullable=True),
                         }
                     )

@@ -1,125 +1,55 @@
-# Structured AI for Life Sciences on Databricks
+# Clinical Extractor — structured AI for life sciences
 
-This repository showcases how to deliver production-grade structured extraction from unstructured clinical text on Databricks, even when the best-performing model is a custom or fine-tuned model served from Unity Catalog.
+Clinical Extractor compares AI Extract, Foundation Model APIs, and custom models on the
+same clinical note and JSON schema. It helps teams choose a serving approach by reviewing
+extracted facts, schema validity, latency, and token usage side by side.
 
-## The Problem
+## What the demo shows
 
-Databricks `ai_query` in SQL and AI Functions can enforce structured JSON output for Foundation Model API models, but custom and fine-tuned models served from Unity Catalog typically return raw text. For life sciences workloads, regex cleanup is not strong enough for regulatory, analytics, or downstream pipeline use cases.
+- **Interactive extraction:** build a schema visually or edit JSON, choose a clinical
+  preset, and compare up to three models.
+- **Custom structured output:** serve MedGemma or Qwen through Model Serving with
+  XGrammar or vLLM guided decoding.
+- **Evaluation:** compare model outputs with ground truth from a Unity Catalog table,
+  with results in Lakebase and metrics and traces in MLflow.
+- **Load testing:** run short workload comparisons with latency, throughput, retries,
+  and schema-validation results.
+- **Batch and fine-tuning references:** run Spark or Serverless GPU batch inference,
+  or train QLoRA adapters for MedGemma and Qwen.
 
-This repo demonstrates how to close that gap with:
+The [workload packs](showcase/workloads/README.md) include synthetic examples for
+clinical notes, adverse events, trial screening, prior authorization, and drug interactions.
+The [decision framework](showcase/decision-framework.md) explains when to use each approach.
+Schema-valid JSON establishes output shape; clinical accuracy still needs reviewed evaluation.
 
-- domain-specific models such as MedGemma
-- XGrammar-constrained decoding for schema-valid JSON
-- Databricks Model Serving for online inference
-- Spark and Serverless GPU Compute paths for batch inference
-- optional PEFT fine-tuning for domain adaptation
+## Run it
 
-## Why This Matters for Life Sciences
-
-Clinical language is specialized. Abbreviations, drug names, procedures, ICD-style terminology, and note structure often reduce the quality of general-purpose models. Life sciences teams need:
-
-- higher extraction accuracy on clinical language
-- deterministic structured output for downstream systems
-- scalable batch processing
-- a practical path from prototype to production
-
-## What This Repo Demonstrates
-
-- **FMAPI-first structured extraction**
-  Lowest-complexity path when Foundation Model API accuracy is good enough.
-- **Domain model + XGrammar**
-  A custom model serving path for better clinical extraction quality with guaranteed JSON output.
-- **Fine-tuned model + XGrammar**
-  A path for customer-specific terminology or workflow-specific extraction tasks.
-- **Interactive comparison UI**
-  A Databricks app to compare FMAPI and custom endpoints side by side.
-- **Distributed batch inference**
-  Spark and SGC-based options for scaling extraction across large note volumes.
-
-## Decision Framework
-
-1. Start with `ai_query` and a Foundation Model API model if accuracy is acceptable.
-2. Move to a domain model plus XGrammar if clinical extraction quality needs to improve.
-3. Add PEFT fine-tuning plus XGrammar if the terminology or output quality still is not sufficient.
-
-See [showcase/decision-framework.md](showcase/decision-framework.md) for the customer-facing version of this decision tree.
-
-## Architecture
-
-```mermaid
-flowchart LR
-    A["Unstructured clinical text"] --> B["Schema + prompt"]
-    B --> C["Databricks app or REST caller"]
-    C --> D["FMAPI model"]
-    C --> E["Custom MedGemma endpoint"]
-    C --> F["Fine-tuned endpoint"]
-    E --> G["XGrammar constrained decoding"]
-    F --> G
-    D --> H["Structured JSON"]
-    G --> H["Structured JSON"]
-    H --> I["Analytics, pipelines, regulatory workflows"]
-    H --> J["Batch Spark / UDF processing"]
-```
-
-## Repo Tour
-
-- [showcase/overview.md](showcase/overview.md): business story and technical thesis
-- [showcase/decision-framework.md](showcase/decision-framework.md): when to use FMAPI, domain models, or fine-tuning
-- [showcase/workloads](showcase/workloads): first-class life sciences workload packs
-- [showcase/demos](showcase/demos): guided runnable demo flows
-- [docs/quickstart.md](docs/quickstart.md): fastest way to deploy and walk through the repo
-- [docs/demo-runbook.md](docs/demo-runbook.md): customer-facing field demo script
-
-## Execution Layer
-
-The repo keeps the current runnable implementation paths unchanged:
-
-- `src/medgemma`: MedGemma registration, serving, and benchmark flow
-- `src/vllm`: alternate custom serving path for MedGemma and Qwen
-- `src/batch`: scalable batch inference paths
-- `src/finetune`: PEFT fine-tuning flow
-- `src/app`: interactive comparison cockpit
-
-See [docs/architecture.md](docs/architecture.md) for the capability-to-code map.
-
-## Quickest Demo Paths
-
-- **Interactive comparison**
-  Deploy the app and compare FMAPI models against custom endpoints.
-- **Custom structured extraction**
-  Register and deploy MedGemma with XGrammar, then run extraction against a workload schema.
-- **Batch pipeline**
-  Prepare sample input and run either the UDF or SGC batch path.
-- **Fine-tuned extraction**
-  Run `finetune_qwen3_disease` to adapt Qwen3-4B to NCBI Disease Corpus annotations, then compare its vLLM endpoint with the base Qwen endpoint in the app.
-
-## Workspace Prerequisite for Model Jobs
-
-Registration and the Serverless GPU batch path use the Unity Catalog volume path `/Volumes/<catalog>/<schema>/model_weights/...`. Create the `model_weights` volume before running those jobs. With the default target:
-
-```sql
-CREATE VOLUME IF NOT EXISTS pavan_naidu_catalog.mlops.model_weights;
-```
-
-See [docs/quickstart.md](docs/quickstart.md) for the complete setup and deployment sequence.
-
-## Validation Commands
+The default target is the FEVM workspace. Follow [setup and operations](docs/setup.md)
+to configure Databricks authentication, app resource bindings, and model-job prerequisites.
 
 ```bash
-databricks bundle validate --profile FEVM
-cd src/app && python -m pytest tests
-cd src/app/frontend && npm run typecheck
-cd src/app/frontend && npm run build
+npm --prefix src/app/frontend ci
+npm --prefix src/app/frontend run build
+databricks bundle validate --strict --target dev --profile FEVM
+databricks bundle plan --select apps.clinical_extractor,experiments.clinical_extractor_evaluations --target dev --profile FEVM
+databricks bundle deploy --select apps.clinical_extractor,experiments.clinical_extractor_evaluations --target dev --profile FEVM
+databricks bundle run clinical_extractor --target dev --profile FEVM
 ```
 
-## Customer Context
+## Repository guide
 
-This showcase is designed for field demos and customer conversations around structured AI in life sciences, including scenarios like:
+| Location | Purpose |
+|---|---|
+| `databricks.yml` | Bundle identity, variables, and deployment targets |
+| `resources/` | App, experiment, and model-job definitions |
+| `src/app/` | FastAPI backend, React frontend, and backend tests |
+| `src/models/qwen/` | Primary custom-model demo: base serving and disease-extraction fine-tuning |
+| `src/models/medgemma/` | Medical-model comparison: vLLM, XGrammar, fine-tuning, and batch notebooks |
+| `showcase/` | Demo story, workload packs, and walkthroughs |
+| `docs/` | Setup, architecture, demo runbook, and benchmark references |
 
-- EHR and clinical note extraction
-- adverse event reporting
-- clinical trial data capture
-- prior authorization
-- drug interaction screening
+See the [source guide](src/README.md) and [documentation index](docs/README.md).
 
-Historical benchmark and optimization notes are available under [docs/reference](docs/reference).
+Generated reports in `output/`, local history in `docs/archive/`, caches, and
+editor settings are ignored. Setup docs, architecture, showcase examples, and
+the prebuilt app assets are shared so a fresh clone can run the demo.

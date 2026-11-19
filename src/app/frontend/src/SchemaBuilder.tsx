@@ -646,6 +646,11 @@ function FieldEditorModal({
   const itemTypeOptions: ItemType[] = depth >= 1
     ? ["string", "number", "integer", "boolean"]
     : ITEM_TYPES;
+  const advancedRulesSummary = [
+    draft.required && "Required",
+    draft.nullable && "Nullable",
+    draft.type === "array" && draft.itemNullable && "Nullable items",
+  ].filter(Boolean).join(" · ") || "No advanced rules enabled";
   const update = (partial: Partial<FieldDef>) => setDraft((current) => ({ ...current, ...partial }));
 
   const save = () => {
@@ -789,43 +794,58 @@ function FieldEditorModal({
           />
         )}
 
-        <div className="sb-modal-options" aria-label="Field options">
-          <label>
-            <input
-              type="checkbox"
-              checked={draft.required}
-              onChange={(event) => update({ required: event.target.checked })}
-            />
+        <details className="sb-advanced-rules">
+          <summary>
             <span>
-              <strong>Required</strong>
-              Property must appear in the output.
+              <span className="sb-advanced-rules-title">
+                <strong>Advanced field rules</strong>
+                <em>Custom models only</em>
+              </span>
+              <small>{advancedRulesSummary}</small>
             </span>
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={draft.nullable}
-              onChange={(event) => update({ nullable: event.target.checked })}
-            />
-            <span>
-              <strong>Nullable</strong>
-              Field may explicitly return null.
-            </span>
-          </label>
-          {draft.type === "array" && (
+          </summary>
+          <p className="sb-advanced-rules-note">
+            These JSON Schema constraints apply to custom model endpoints. Managed models use
+            their own supported output contracts.
+          </p>
+          <div className="sb-modal-options" aria-label="Advanced field rules">
             <label>
               <input
                 type="checkbox"
-                checked={draft.itemNullable}
-                onChange={(event) => update({ itemNullable: event.target.checked })}
+                checked={draft.required}
+                onChange={(event) => update({ required: event.target.checked })}
               />
               <span>
-                <strong>Nullable items</strong>
-                Individual array entries may be null.
+                <strong>Required</strong>
+                Property must appear in the output.
               </span>
             </label>
-          )}
-        </div>
+            <label>
+              <input
+                type="checkbox"
+                checked={draft.nullable}
+                onChange={(event) => update({ nullable: event.target.checked })}
+              />
+              <span>
+                <strong>Nullable</strong>
+                Field may explicitly return null.
+              </span>
+            </label>
+            {draft.type === "array" && (
+              <label>
+                <input
+                  type="checkbox"
+                  checked={draft.itemNullable}
+                  onChange={(event) => update({ itemNullable: event.target.checked })}
+                />
+                <span>
+                  <strong>Nullable items</strong>
+                  Individual array entries may be null.
+                </span>
+              </label>
+            )}
+          </div>
+        </details>
 
         <div className="sb-modal-footer">
           <button type="button" className="sb-button sb-button-secondary" onClick={onCancel}>

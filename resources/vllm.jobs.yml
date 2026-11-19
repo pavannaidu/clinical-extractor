@@ -1,0 +1,45 @@
+resources:
+  jobs:
+    medgemma_vllm:
+      name: "[medgemma/vllm] Custom LLM Serving (vLLM)"
+      environments:
+        - environment_key: sgc
+          spec:
+            client: "4"
+      tasks:
+        - task_key: medgemma_vllm
+          environment_key: sgc
+          compute:
+            hardware_accelerator: GPU_1xA10
+          notebook_task:
+            notebook_path: ../src/models/medgemma/deploy_vllm.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              registered_model_name: "medgemma_vllm_structured"
+              endpoint_name: "medgemma-1-5-4b-vllm-endpoint"
+              workload_type: "GPU_MEDIUM"
+              scale_to_zero: "true"
+              hf_model_name: "google/medgemma-1.5-4b-it"
+
+    inference_vllm_qwen:
+      name: "[qwen/vllm] Custom LLM Serving (vLLM)"
+      environments:
+        - environment_key: sgc
+          spec:
+            client: "4"
+      tasks:
+        - task_key: inference_vllm_qwen
+          environment_key: sgc
+          compute:
+            hardware_accelerator: GPU_1xA10
+          notebook_task:
+            notebook_path: ../src/models/qwen/deploy_vllm.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              registered_model_name: "qwen3_vllm_structured"
+              endpoint_name: "qwen3-4b-vllm-endpoint"
+              workload_type: "GPU_MEDIUM"
+              scale_to_zero: "false"
+              hf_model_name: "Qwen/Qwen3-4B-Instruct-2507"

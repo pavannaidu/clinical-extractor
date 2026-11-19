@@ -1,8 +1,6 @@
 import asyncio
 import json
-import sys
 from datetime import timedelta
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -11,13 +9,8 @@ from fastapi.responses import JSONResponse
 from jsonschema import Draft202012Validator
 from pydantic import ValidationError
 
-
-APP_ROOT = Path(__file__).resolve().parents[1]
-if str(APP_ROOT) not in sys.path:
-    sys.path.insert(0, str(APP_ROOT))
-
-from api import routes  # noqa: E402
-from api.schemas import (  # noqa: E402
+from api import routes
+from api.schemas import (
     LoadTestOutputEstimateRequest,
     LoadTestRequest,
     ModelInfo,

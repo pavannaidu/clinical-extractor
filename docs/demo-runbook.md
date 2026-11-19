@@ -42,9 +42,13 @@ Use the sample note, schema, and prompt directly in the app or endpoint request.
 
 Use `src/app` to demonstrate:
 
-- a ready FMAPI endpoint
-- a custom MedGemma endpoint
-- optionally a fine-tuned or alternate custom endpoint that has been attached to the app with `CAN_QUERY` and selected in Model Settings
+- AI Extract for managed extraction
+- GPT-5.4 Mini as the general-purpose structured-output baseline
+- fine-tuned Qwen as the custom model, using its disease-extraction task
+
+Compare base Qwen with fine-tuned Qwen when explaining adaptation. Bring in
+MedGemma as an optional medical pretrained model comparison. Attach each custom
+endpoint to the app with `CAN_QUERY` and select it in Model Settings.
 
 Suggested talking points:
 
@@ -59,14 +63,14 @@ Pick one:
 - **Batch**
   Show that the same extraction pattern scales to distributed processing.
 - **Fine-tuning**
-  Show that PEFT improves customer-specific terminology handling.
+  Test whether PEFT improves customer-specific terminology handling.
 
 ## Demo Commands
 
 ```bash
-databricks bundle validate --profile FEVM
-databricks bundle plan --select apps.clinical_extractor --target dev --profile FEVM
-databricks bundle deploy --select apps.clinical_extractor --target dev --profile FEVM
+databricks bundle validate --strict --target dev --profile FEVM
+databricks bundle plan --select apps.clinical_extractor,experiments.clinical_extractor_evaluations --target dev --profile FEVM
+databricks bundle deploy --select apps.clinical_extractor,experiments.clinical_extractor_evaluations --target dev --profile FEVM
 databricks bundle run clinical_extractor --target dev --profile FEVM
 ```
 
@@ -88,8 +92,12 @@ databricks bundle run batch_inference_udf --profile FEVM
 ```
 
 ```bash
-databricks bundle run finetune_medgemma --profile FEVM
+databricks bundle run inference_vllm_qwen --profile FEVM
+databricks bundle run finetune_qwen3_disease --profile FEVM
 ```
+
+The [source guide](../src/README.md) lists the optional MedGemma fine-tuning and
+serving paths alongside the primary Qwen workflow.
 
 ## What to Emphasize
 

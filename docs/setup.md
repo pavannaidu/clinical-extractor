@@ -1,0 +1,242 @@
+# Setup and operations
+
+## Prerequisites
+
+- Databricks CLI 0.270.0 or later, authenticated to the target workspace.
+- Python 3.12 and Node.js 20 or 22 for local development.
+- An existing Unity Catalog catalog and schema; defaults are `pavan_naidu_catalog.mlops`.
+- For the app: a Lakebase project, branch, and database, a SQL warehouse for evaluation,
+  and the serving endpoints attached in `resources/clinical_extractor.app.yml`.
+- For MedGemma downloads and fine-tuning: access to the Hugging Face model and the
+  `pavan_naidu/hf_token` Databricks secret. The public Qwen model and NCBI Disease
+  dataset do not require that token.
+
+The `dev` target uses `https://fevm-pavan-naidu.cloud.databricks.com` and profile `FEVM`.
+Authenticate or refresh an expired session with:
+
+```bash
+databricks auth login --host https://fevm-pavan-naidu.cloud.databricks.com --profile FEVM
+```
+
+## Configure the bundle
+
+`databricks.yml` contains variables and targets; `resources/*.yml` contains resource
+definitions. The bundle name remains `medgemma`, and job and app resource keys remain
+stable so existing deployment state continues to address the same resources.
+
+| Variable | Purpose |
+|---|---|
+| `app_name` | App name; defaults to `clinical-` plus the deployer's normalized identity |
+| `catalog`, `schema` | Existing Unity Catalog namespace for models and batch tables |
+| `lakebase_project`, `lakebase_branch`, `lakebase_database` | Existing Lakebase resource IDs |
+| `evaluation_warehouse_id` | SQL warehouse used for evaluation dataset queries |
+| `evaluation_experiment_name` | MLflow experiment created by the bundle for evaluations |
+| `batch_experiment_name` | MLflow experiment for Serverless GPU batch runs |
+| `medgemma_*`, `qwen3_finetuned_*`, `finetune_registered_model_name` | Registered model and serving endpoint names |
+| `gpu_node_type`, `gpu_spark_version` | Classic UDF cluster: two `g5.2xlarge` workers on 17.3 LTS ML GPU |
+
+Defaults for existing workspace resources point to the original FEVM deployment.
+Override them for another workspace rather than editing resource files. Save local
+values in the ignored `.databricks/bundle/dev/variable-overrides.json`, for example:
+
+```json
+{
+  "app_name": "clinical-extractor"
+}
+```
+
+Use the current app name when continuing an existing deployment; the original FEVM
+app is `clinical-extractor`. For a new app, use a distinct name containing only lowercase
+letters, digits, and hyphens, at most 30 characters long. Shorten `app_name` locally if
+the identity-based default exceeds that limit. New non-production targets sharing a
+workspace should use distinct app names.
+
+## Build and deploy the app
+
+Run these commands from the repository root:
+
+```bash
+npm --prefix src/app/frontend ci
+npm --prefix src/app/frontend run build
+databricks bundle validate --strict --target dev --profile FEVM
+databricks bundle plan --select apps.clinical_extractor,experiments.clinical_extractor_evaluations --target dev --profile FEVM
+databricks bundle deploy --select apps.clinical_extractor,experiments.clinical_extractor_evaluations --target dev --profile FEVM
+databricks bundle run clinical_extractor --target dev --profile FEVM
+```
+
+The targeted deployment includes the experiment referenced by the app. Review the
+plan before applying it. `bundle deploy` uploads the code and configuration;
+`bundle run clinical_extractor` starts a fresh app deployment. To deploy the model-job
+definitions as well, run `databricks bundle deploy --target dev --profile FEVM`.
+Deploying job definitions does not run the jobs.
+Use a full bundle plan and deployment after changing notebook paths so existing
+jobs reference the uploaded locations; a targeted app deployment skips job updates.
+
+```bash
+databricks bundle plan --target dev --profile FEVM
+databricks bundle deploy --target dev --profile FEVM
+```
+
+The app's Postgres resource binding injects `PG*` connection settings;
+`src/app/app.yaml` supplies `LAKEBASE_ENDPOINT` so the backend can mint database
+credentials. The app initializes its tables and seeds built-in presets on startup.
+It also binds AI Extract, the evaluation warehouse and experiment, and the serving
+endpoints listed in `resources/clinical_extractor.app.yml`.
+
+`src/app/models.json` defines the initial model selection, request contracts, and
+default inference options. Attaching an endpoint with `CAN_QUERY` grants access;
+selecting it in Model Settings chooses it for use. The app cannot grant permissions
+by changing a selection.
+
+Custom GPU endpoints can take several minutes to start after scaling to zero.
+The app limits an interactive inference request, including retries, to at most
+110 seconds so it can return a structured timeout before the Apps proxy closes
+the connection. If a cold endpoint times out, let it finish starting and retry;
+the endpoint's control-plane `READY` status does not guarantee a warm replica.
+
+## Local development
+
+Create and activate a virtual environment from the repository root:
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r src/app/requirements-dev.txt
+npm --prefix src/app/frontend ci
+```
+
+Run the backend and Vite in separate terminals, with the virtual environment active
+in the backend terminal:
+
+```bash
+cd src/app
+DATABRICKS_CONFIG_PROFILE=FEVM uvicorn main:app --reload --port 8000
+```
+
+```bash
+npm --prefix src/app/frontend run dev
+```
+
+Vite proxies `/api` to the backend on port 8000. Backend-only serving uses the
+prebuilt `src/app/static/` directory, so rebuild after frontend changes. Edit
+`frontend/src/` and `frontend/public/`; the build regenerates `static/` and copies
+the public assets into it. Keep the built output in Git for Databricks Apps.
+
+Without Lakebase connection settings, the app uses built-in presets and process-local
+model settings. Preset writes and evaluation runs require Lakebase. For a configured
+database, the backend accepts Databricks Apps' `PG*` variables plus `LAKEBASE_ENDPOINT`,
+or the legacy `LAKEBASE_DB_*` variables including `LAKEBASE_DB_PASSWORD`.
+Evaluations also require `DATABRICKS_WAREHOUSE_ID` and use `MLFLOW_EXPERIMENT_ID`
+when supplied. In Databricks Apps these values come from the resource bindings.
+Dataset queries use the signed-in user's forwarded access token and the app's `sql`
+user scope.
+
+## Model jobs
+
+Registration and Serverless GPU batch inference share model weights under
+`/Volumes/<catalog>/<schema>/model_weights/`. Create that volume before running
+these jobs; the app itself does not require it:
+
+```sql
+CREATE VOLUME IF NOT EXISTS pavan_naidu_catalog.mlops.model_weights;
+CREATE VOLUME IF NOT EXISTS pavan_naidu_catalog.mlops.ray_data;
+```
+
+After deploying job definitions, choose a pipeline:
+
+| Pipeline | Jobs in order |
+|---|---|
+| MedGemma + XGrammar | `medgemma_register` → `medgemma_deploy` → `medgemma_benchmark` |
+| vLLM serving | `medgemma_vllm` or `inference_vllm_qwen` |
+| Batch | `prepare_batch_input` → `batch_inference_udf` or `batch_inference_sgc` |
+| Fine-tuning | `finetune_medgemma` or `finetune_qwen3_disease` |
+
+Run each job with `databricks bundle run <job-key> --target dev --profile FEVM`.
+Batch inference requires `medgemma_register` first: the UDF path loads its registered
+model under the `challenger` alias, and the SGC path reads its saved weights.
+Keep `workload_type` aligned between endpoint deployment, benchmark, and UDF jobs;
+the notebooks append the corresponding suffix to `medgemma_endpoint_name`.
+
+`finetune_qwen3_disease` trains on a pinned public NCBI Disease Corpus revision,
+registers a version of `qwen3_vllm_structured` under the `disease-finetuned` alias,
+and deploys a separate fine-tuned vLLM endpoint. Redeploy and run the app after that
+endpoint is ready to use its binding. Model defaults and training parameters live
+in `resources/finetune.jobs.yml`.
+
+## Shared files and local artifacts
+
+Share `src/`, `resources/`, the bundle configuration, lockfiles, `docs/`, and
+`showcase/`. These contain runnable code, setup instructions, model-workflow
+references, and reusable synthetic demo inputs. Keep `src/app/static/` tracked
+because the Python app serves that prebuilt frontend directly.
+
+`.gitignore` keeps reports in `output/`, historical local files in `docs/archive/`,
+editor settings, browser-test artifacts, export `.pages.json` metadata, virtual
+environments, caches, and logs out of new commits. The previous `/info-backup`
+presentation is preserved locally at `docs/archive/info-backup/index.html`.
+The shared presentation source is `src/app/frontend/public/info/`.
+
+Bundle sync excludes documentation, showcase files, frontend source, and tests
+from workspace uploads; it deploys the built app assets and model notebooks.
+Rebuild the frontend before deployment.
+
+## Validation
+
+With the virtual environment active, run from the repository root:
+
+```bash
+python -m pytest tests src/app/tests -q
+npm --prefix src/app/frontend run typecheck
+npm --prefix src/app/frontend run build
+databricks bundle validate --strict --target dev --profile FEVM
+```
+
+Backend tests use fakes for Databricks and database calls. The model tests cover
+training-label alignment, merged checkpoint export, driver model-loading
+environment handling, and benchmark latency percentiles without downloading weights.
+They also check bounded JSON whitespace and greedy generation at temperature zero.
+Endpoint preflight tests preserve remote errors and reject missing or schema-invalid
+chat responses before a batch starts.
+Bundle validation requires a working workspace login; it checks configuration and
+does not execute notebooks.
+
+Validate model workflows by running the jobs above on Databricks. For smoke runs,
+use a separate catalog/schema and distinct model and endpoint names. Prepare one
+synthetic replication (20 rows), benchmark a few rows, and limit fine-tuning examples
+and epochs. The SGC path also needs the `ray_data` volume for Parquet staging.
+Check notebook results, schema-valid batch rows, MLflow metrics, and actual endpoint
+inference; remove temporary GPU endpoints when done. Small training runs validate
+execution and serving, not clinical extraction quality.
+
+The classic GPU job uses dedicated access (`SINGLE_USER`) so Spark can read Unity
+Catalog tables. Its SQL path sends chat messages and each row's schema in the
+custom endpoint request `STRUCT`; `modelParameters` is for foundation model
+endpoints.
+The notebook checks one endpoint request before downloading model weights. DBR
+16.4 rejected this ChatModel's chat response as a traditional prediction response;
+the classic job therefore uses 17.3 LTS ML GPU.
+Its local model load temporarily removes `WORLD_SIZE` and restores it afterward:
+Transformers 4.53 otherwise treats the runtime's value as a request for tensor
+parallelism, which can fail during Gemma3 warm-up. This path performs inference
+on the driver's GPU. Import PyTorch before clearing the variable, because DBR
+creates it during the first PyTorch import.
+The local driver model also disables Transformers' automatic forward-pass
+compilation. A 17.3 runtime stack trace caught repeated CUDA graph capture while
+the GPU was mostly idle. This setting applies only to the loaded driver instance;
+the packaged serving model keeps its own configuration.
+If the cluster events report insufficient AWS Spot GPU capacity, retry with
+`aws_attributes.availability: ON_DEMAND` and `aws_attributes.zone_id: auto` in the
+job cluster configuration. This changes the compute cost, so choose it explicitly
+for the run or deployment that needs it.
+
+Keep the model dependency pins together when upgrading. The XGrammar serving
+packages pair PyTorch 2.6.0 with torchvision 0.21.0; inheriting a different
+torchvision from the serving image can prevent Gemma3 from importing. These
+notebooks also pin Databricks SDK 0.96.0 for large model artifact uploads. The
+MedGemma vLLM entrypoint disables unbounded JSON whitespace, which otherwise can
+exhaust the token budget on nested schemas. Validate both complex preset examples
+after changing the vLLM or XGrammar versions.
+The ChatModel's schema compiler also disables unbounded whitespace after a batch
+vitals response exhausted 512 tokens before closing its JSON object. Temperature
+zero uses greedy decoding; positive temperatures use sampling. Run registration's
+vitals regression cases and the batch jobs after changing these generation controls.

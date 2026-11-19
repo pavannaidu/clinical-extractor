@@ -210,6 +210,8 @@ print(HOST_TO_QUERY)
 
 # DBTITLE 1,Build Entrypoint
 def entrypoint(port: int) -> str:
+    import shlex
+
     argv = [
         "python",
         "-u",
@@ -229,10 +231,11 @@ def entrypoint(port: int) -> str:
         "4096",
         "--gpu-memory-utilization",
         "0.90",
-        "--guided-decoding-backend",
-        "xgrammar:no-fallback",
+        # Prevent long whitespace loops when MedGemma follows nested JSON schemas.
+        "--structured-outputs-config",
+        '{"backend":"xgrammar","disable_fallback":true,"disable_any_whitespace":true}',
     ]
-    return " ".join(argv)
+    return shlex.join(argv)
 
 
 print(entrypoint(LOCAL_PORT))
@@ -570,6 +573,8 @@ def _run_guided_validation(client: OpenAI, model_name: str, scenario: dict):
         max_tokens=MEDGEMMA_EXTRACTION_MAX_TOKENS,
         required_keys=scenario["required_keys"],
     )
+    from jsonschema import validate
+    validate(instance=parsed, schema=scenario["schema"])
     print(json.dumps(parsed, indent=2))
     return parsed
 
@@ -749,7 +754,7 @@ print(response.choices[0].message.content)
 
 # DBTITLE 1,Structured Endpoint Validation for Heavy Presets
 endpoint_structured_results = {
-    scenario["label"]: _run_guided_validation_nonblocking(endpoint_client, ENDPOINT_NAME, scenario)
+    scenario["label"]: _run_guided_validation(endpoint_client, ENDPOINT_NAME, scenario)
     for scenario in HEAVY_PRESET_VALIDATIONS
 }
 
@@ -775,7 +780,7 @@ print()
 print("  Endpoint Tests:")
 print("    ✓ Databricks SDK query")
 print("    ✓ OpenAI SDK query")
-print("    ✓ Heavy preset validation attempted (non-blocking)")
+print("    ✓ Heavy preset validation passed")
 print()
 print("  Cleanup:")
 print(f"    - Delete endpoint: w.serving_endpoints.delete('{ENDPOINT_NAME}')")
@@ -783,3 +788,9 @@ print(f"    - Delete model:    client.delete_registered_model('{FULL_MODEL_NAME}
 print(f"    - Clean work dir:  rm -rf {pwd}")
 print()
 print("=" * 60)
+dbutils.notebook.exit(json.dumps({
+    "model_name": FULL_MODEL_NAME,
+    "model_version": str(model_version.version),
+    "endpoint_name": ENDPOINT_NAME,
+    "structured_smoke_tests": endpoint_structured_results,
+}))

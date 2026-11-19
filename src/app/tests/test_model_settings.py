@@ -1,18 +1,11 @@
 import asyncio
 import json
-import sys
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
-
-APP_ROOT = Path(__file__).resolve().parents[1]
-if str(APP_ROOT) not in sys.path:
-    sys.path.insert(0, str(APP_ROOT))
-
-from api import database, routes  # noqa: E402
-from api.schemas import ModelSelectionEntry, ModelSettingsUpdate  # noqa: E402
+from api import database, routes
+from api.schemas import ModelSelectionEntry, ModelSettingsUpdate
 
 
 DECLARED_CONFIG = {

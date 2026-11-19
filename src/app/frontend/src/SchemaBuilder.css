@@ -363,11 +363,110 @@
   font-size: 12px;
 }
 
+.sb-advanced-rules {
+  margin-top: 8px;
+  border-top: 1px solid var(--border-light);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.sb-advanced-rules summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 64px;
+  padding: 14px 2px;
+  color: var(--text-primary);
+  cursor: pointer;
+  list-style: none;
+}
+
+.sb-advanced-rules summary::-webkit-details-marker {
+  display: none;
+}
+
+.sb-advanced-rules summary::after {
+  content: "";
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  margin-right: 5px;
+  border-right: 2px solid var(--text-muted);
+  border-bottom: 2px solid var(--text-muted);
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform 140ms ease;
+}
+
+.sb-advanced-rules[open] summary::after {
+  transform: rotate(225deg) translate(-2px, -2px);
+}
+
+.sb-advanced-rules summary:hover strong,
+.sb-advanced-rules summary:focus-visible strong {
+  color: var(--text-accent);
+}
+
+.sb-advanced-rules summary:focus-visible {
+  border-radius: 6px;
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.sb-advanced-rules summary span,
+.sb-advanced-rules summary strong,
+.sb-advanced-rules summary small {
+  display: block;
+}
+
+.sb-advanced-rules .sb-advanced-rules-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sb-advanced-rules summary strong {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.sb-advanced-rules-title em {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 7px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sb-advanced-rules summary small {
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.sb-advanced-rules-note {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 7px;
+  background: var(--bg-surface-alt);
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .sb-modal-options {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
-  margin-top: 4px;
+  padding: 2px 0 16px;
 }
 
 .sb-modal-options label {
@@ -620,6 +719,7 @@
 @media (prefers-reduced-motion: reduce) {
   .sb-field-card,
   .sb-field-actions,
+  .sb-advanced-rules summary::after,
   .sb-modal,
   .sb-modal-backdrop {
     animation: none;

@@ -1,6 +1,8 @@
-# Performance Optimization: MedGemma Serving Throughput
+# Historical MedGemma serving optimization
 
-All runs from MLflow experiment `2468185612186458` on FEVM workspace.
+Recorded February–March 2026. All runs are from MLflow experiment
+`2468185612186458` on the FEVM workspace. Version and configuration descriptions
+refer to those experiments; see [setup](../setup.md) for current deployment settings.
 
 ## Benchmark History
 
@@ -50,7 +52,7 @@ Early runs (02-25 to 02-26) used `medgemma-xgrammar-bnb-4bit` and `medgemma-xgra
 8. **KV cache is already active** — HuggingFace `model.generate()` uses DynamicCache by default. The bottleneck is NF4 dequantization bandwidth + XGrammar constraint checking, not cache strategy.
 9. **bf16 (v26) re-benchmark confirms c4 scaling on A10** — 14.5→27.7 tok/s at c4 (~2x). NF4 (v32) shows no c4 scaling (13.6→14.3) because it's memory-bandwidth-bound from dequantization. T4 shows no c4 scaling for either (VRAM-limited). **For throughput under load, bf16 on A10 is the best config.**
 
-## Current `model.py` Config (v37)
+## Recorded `model.py` configuration (v37)
 
 - Adaptive quantization: bf16 on A10+ (SM ≥ 8.0), NF4 4-bit on T4 (SM 7.5)
 - Flash Attention 2 with try/except fallback to SDPA

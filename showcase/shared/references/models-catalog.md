@@ -26,4 +26,4 @@ In practice:
 
 Selecting an endpoint in the UI does not grant the app access to it. Add every
 endpoint used by the demo to `resources.apps.clinical_extractor.resources` in
-`databricks.yml` with `CAN_QUERY` before deployment.
+`resources/clinical_extractor.app.yml` with `CAN_QUERY` before deployment.

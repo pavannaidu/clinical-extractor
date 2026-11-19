@@ -14,6 +14,12 @@ import type {
   LoadTestOutputEstimateRequest,
   LoadTestOutputEstimateResponse,
   ApiError,
+  EvaluationColumn,
+  EvaluationCreateRequest,
+  EvaluationDatasetRequest,
+  EvaluationPreflightResponse,
+  EvaluationReport,
+  EvaluationRun,
 } from "./types";
 
 const BASE = "/api/v1";
@@ -219,4 +225,94 @@ export async function updateModelSettings(
     body: JSON.stringify({ endpoints }),
   });
   return handleResponse<ModelSettings>(res);
+}
+
+export async function fetchEvaluationCatalogs(): Promise<string[]> {
+  const res = await fetch(`${BASE}/evaluations/catalogs`);
+  const body = await handleResponse<{ items: string[] }>(res);
+  return body.items;
+}
+
+export async function fetchEvaluationSchemas(catalog: string): Promise<string[]> {
+  const res = await fetch(
+    `${BASE}/evaluations/schemas?catalog=${encodeURIComponent(catalog)}`
+  );
+  const body = await handleResponse<{ items: string[] }>(res);
+  return body.items;
+}
+
+export async function fetchEvaluationTables(
+  catalog: string,
+  schema: string
+): Promise<string[]> {
+  const params = new URLSearchParams({ catalog, schema });
+  const res = await fetch(`${BASE}/evaluations/tables?${params}`);
+  const body = await handleResponse<{ items: string[] }>(res);
+  return body.items;
+}
+
+export async function fetchEvaluationColumns(
+  tableName: string
+): Promise<EvaluationColumn[]> {
+  const res = await fetch(
+    `${BASE}/evaluations/columns?table_name=${encodeURIComponent(tableName)}`
+  );
+  const body = await handleResponse<{ columns: EvaluationColumn[] }>(res);
+  return body.columns;
+}
+
+export async function preflightEvaluation(
+  req: EvaluationDatasetRequest
+): Promise<EvaluationPreflightResponse> {
+  const res = await fetch(`${BASE}/evaluations/preflight`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  return handleResponse<EvaluationPreflightResponse>(res);
+}
+
+export async function fetchEvaluationRuns(): Promise<EvaluationRun[]> {
+  const res = await fetch(`${BASE}/evaluations/runs`);
+  return handleResponse<EvaluationRun[]>(res);
+}
+
+export async function createEvaluationRun(
+  req: EvaluationCreateRequest
+): Promise<EvaluationRun> {
+  const res = await fetch(`${BASE}/evaluations/runs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  return handleResponse<EvaluationRun>(res);
+}
+
+export async function fetchEvaluationRun(runId: string): Promise<EvaluationRun> {
+  const res = await fetch(`${BASE}/evaluations/runs/${encodeURIComponent(runId)}`);
+  return handleResponse<EvaluationRun>(res);
+}
+
+export async function fetchEvaluationReport(
+  runId: string
+): Promise<EvaluationReport> {
+  const res = await fetch(
+    `${BASE}/evaluations/runs/${encodeURIComponent(runId)}/report`
+  );
+  return handleResponse<EvaluationReport>(res);
+}
+
+export async function cancelEvaluationRun(runId: string): Promise<EvaluationRun> {
+  const res = await fetch(`${BASE}/evaluations/runs/${encodeURIComponent(runId)}`, {
+    method: "DELETE",
+  });
+  return handleResponse<EvaluationRun>(res);
+}
+
+export async function rerunEvaluation(runId: string): Promise<EvaluationRun> {
+  const res = await fetch(
+    `${BASE}/evaluations/runs/${encodeURIComponent(runId)}/rerun`,
+    { method: "POST" }
+  );
+  return handleResponse<EvaluationRun>(res);
 }

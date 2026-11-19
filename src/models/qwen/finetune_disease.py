@@ -29,7 +29,9 @@ dbutils.widgets.text("max_seq_length", "1024")
 # COMMAND ----------
 
 # DBTITLE 1,Dependencies
+# Keep training on CUDA 12.8: bitsandbytes 0.49.2 has no CUDA 13.2 binary.
 # MAGIC %pip install "mlflow==3.12.0" "databricks-sdk==0.96.0" \
+# MAGIC   "torch==2.9.0" "torchvision==0.24.0" \
 # MAGIC   "transformers==4.57.6" "trl==0.24.0" \
 # MAGIC   "peft==0.18.0" "bitsandbytes==0.49.2" "datasets>=4,<5" \
 # MAGIC   "accelerate>=1.10,<2" "huggingface_hub>=0.34,<2"
@@ -358,6 +360,13 @@ model_info = mlflow.pyfunc.log_model(
     ],
 )
 model_client = mlflow.MlflowClient()
+from mlflow.exceptions import MlflowException
+
+try:
+    model_client.create_registered_model(FULL_MODEL_NAME)
+except MlflowException as exc:
+    if exc.error_code != "RESOURCE_ALREADY_EXISTS":
+        raise
 with pack_env_for_databricks_model_serving(
     model_info.model_uri,
     enforce_pip_requirements=True,

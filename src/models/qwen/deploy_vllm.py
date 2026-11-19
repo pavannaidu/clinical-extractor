@@ -512,7 +512,8 @@ response = client.chat.completions.create(
 )
 
 structured_endpoint = json.loads(response.choices[0].message.content)
-assert "medications" in structured_endpoint, structured_endpoint
+from jsonschema import validate
+validate(instance=structured_endpoint, schema=medication_schema)
 print(json.dumps(structured_endpoint, indent=2))
 
 # COMMAND ----------
@@ -531,3 +532,9 @@ for event in stream:
     print(delta.content, end="|")
 
 print()
+dbutils.notebook.exit(json.dumps({
+    "model_name": FULL_MODEL_NAME,
+    "model_version": str(model_version.version),
+    "endpoint_name": ENDPOINT_NAME,
+    "structured_smoke_test": structured_endpoint,
+}))

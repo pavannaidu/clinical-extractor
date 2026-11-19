@@ -298,6 +298,109 @@ export interface ModelSettings {
   source: "saved" | "memory" | "default";
 }
 
+export interface EvaluationColumn {
+  name: string;
+  data_type: string;
+}
+
+export interface EvaluationDatasetRequest {
+  table_name: string;
+  input_column: string;
+  ground_truth_column: string;
+  identifier_column?: string | null;
+  schema_json: string;
+  row_limit: number;
+}
+
+export interface EvaluationCreateRequest extends EvaluationDatasetRequest {
+  name: string;
+  model: string;
+  preset_id: string;
+  system_prompt: string;
+  enable_groundedness: boolean;
+  enable_completeness: boolean;
+}
+
+export interface EvaluationPreflightSample {
+  record_id: string;
+  input_preview: string;
+  ground_truth: Record<string, unknown>;
+}
+
+export interface EvaluationPreflightResponse {
+  row_count: number;
+  valid_rows: number;
+  invalid_rows: number;
+  samples: EvaluationPreflightSample[];
+  warnings: string[];
+}
+
+export interface EvaluationMetrics {
+  overall_field_accuracy: number | null;
+  fully_correct_percentage: number | null;
+  schema_valid_percentage: number | null;
+  inference_success_rate: number | null;
+  average_latency_ms: number | null;
+  field_scores: Record<string, number>;
+  judge_metrics: Record<string, unknown>;
+}
+
+export type EvaluationRunStatus =
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "interrupted";
+
+export interface EvaluationRun {
+  run_id: string;
+  name: string;
+  status: EvaluationRunStatus;
+  table_name: string;
+  input_column: string;
+  ground_truth_column: string;
+  identifier_column: string | null;
+  model: string;
+  preset_id: string;
+  schema_json: string;
+  system_prompt: string;
+  row_limit: number;
+  enable_groundedness: boolean;
+  enable_completeness: boolean;
+  total_rows: number;
+  completed_rows: number;
+  succeeded_rows: number;
+  failed_rows: number;
+  mlflow_experiment_id: string | null;
+  mlflow_run_id: string | null;
+  metrics: EvaluationMetrics;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  updated_at: string;
+}
+
+export interface EvaluationResultSummary {
+  record_id: string;
+  status: "completed" | "failed";
+  latency_ms: number | null;
+  matched_fields: number;
+  total_fields: number;
+  mismatched_paths: string[];
+  schema_valid: boolean;
+  mlflow_trace_id: string | null;
+  error_message: string | null;
+}
+
+export interface EvaluationReport {
+  run: EvaluationRun;
+  results: EvaluationResultSummary[];
+  mlflow_url: string | null;
+}
+
 export interface ApiError {
   error_code: string;
   message: string;

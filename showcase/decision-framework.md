@@ -51,7 +51,9 @@ Need structured JSON from unstructured clinical text?
 ## Mapping to This Repo
 
 - FMAPI comparison story: `src/app`
-- Domain model + XGrammar: `src/medgemma`
-- Alternate custom serving path: `src/vllm`
-- PEFT + XGrammar: `src/finetune`
-- Batch scale-out path: `src/batch`
+- Domain model + XGrammar: `src/models/medgemma/xgrammar`
+- Primary custom-model demo: `src/models/qwen/deploy_vllm.py`
+- Qwen disease-extraction fine-tuning: `src/models/qwen/finetune_disease.py`
+- Medical-model vLLM comparison: `src/models/medgemma/deploy_vllm.py`
+- MedGemma PEFT + XGrammar: `src/models/medgemma/finetune.py`
+- Batch scale-out path: `src/models/medgemma/batch`

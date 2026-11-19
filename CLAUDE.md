@@ -1,156 +1,112 @@
-# CLAUDE.md
+# Repository guidance
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Databricks Asset Bundle for structured clinical extraction: MedGemma + XGrammar,
+MedGemma/Qwen vLLM serving, batch inference, QLoRA fine-tuning, and a FastAPI/React app.
 
-## Overview
+## Configuration and commands
 
-Databricks Asset Bundle (DAB) project that deploys **Google MedGemma 1.5 4B IT** with **XGrammar constrained generation** to produce structured JSON from medical text. Also supports vLLM-based serving for MedGemma and Qwen3 models.
-
-Workspace:
-- **FEVM** (default): `fevm-pavan-naidu.cloud.databricks.com`, profile `FEVM`
-
-## DABs Commands
-
-```bash
-databricks bundle validate --profile FEVM
-databricks bundle deploy --profile FEVM
-
-# MedGemma pipeline
-databricks bundle run medgemma_register    --profile FEVM
-databricks bundle run medgemma_deploy      --profile FEVM
-databricks bundle run medgemma_benchmark   --profile FEVM
-
-# Batch
-databricks bundle run prepare_batch_input  --profile FEVM
-databricks bundle run batch_inference_udf  --profile FEVM
-databricks bundle run batch_inference_sgc  --profile FEVM
-
-# vLLM
-databricks bundle run medgemma_vllm        --profile FEVM
-databricks bundle run inference_vllm_qwen  --profile FEVM
-
-# Fine-tuning
-databricks bundle run finetune_medgemma    --profile FEVM
-
-# Databricks App (review, deploy, then start)
-databricks bundle plan   --select apps.clinical_extractor --target dev --profile FEVM
-databricks bundle deploy --select apps.clinical_extractor --target dev --profile FEVM
-databricks bundle run clinical_extractor                  --target dev --profile FEVM
-```
-
-All jobs use the `dev` target (mode: development). Bundle name: `medgemma`.
-
-## Pipeline Architecture
-
-Two model-serving paths, plus batch inference and a web app. Files are numbered by execution order within each pipeline.
-
-```
-MedGemma:  src/medgemma/01_register.py (SGC: download + register) -> 02_deploy_endpoint.py -> 03_benchmark_endpoint.py
-           src/medgemma/model.py (MLflow ChatModel loaded at serving time)
-vLLM:      src/vllm/medgemma_vllm.py (SGC: self-contained download, serve, test, register, deploy)
-           src/vllm/inference_vllm_qwen.py (same flow for Qwen3-4B)
-Batch:     src/batch/01_prepare_batch_input.py -> 02_batch_inference_udf.py (pandas + ai_query)
-                                               -> 03_batch_inference_sgc.py (SGC + Ray)
-Finetune:  src/finetune/finetune_medgemma.py (SGC: generate data, QLoRA train, merge, register, deploy)
-App:       src/app/ (FastAPI + React)
-```
-
-All `.py` files under `src/` (except `src/app/`) are Databricks notebooks in Python source format (`# COMMAND ----------` separators, `# MAGIC %md` markdown cells). The one exception is `src/medgemma/model.py` which is a regular Python module logged as an MLflow artifact.
-
-## Databricks App (`src/app/`)
-
-FastAPI backend + React/Vite frontend for interactive structured JSON extraction.
-
-### Dev commands
+- Bundle name: `medgemma`; default target: `dev` in development mode.
+- Default workspace: `fevm-pavan-naidu.cloud.databricks.com`, profile `FEVM`.
+- `databricks.yml` owns variables and targets. `resources/*.yml` owns resource
+  definitions, with paths relative to those files (`../src/...`).
+- Keep bundle name and resource keys stable to preserve deployment state.
+- App names use `app_name`; existing checkouts can preserve `clinical-extractor`
+  through ignored `.databricks/bundle/dev/variable-overrides.json`.
+- Existing catalog, schema, Lakebase IDs, and evaluation warehouse defaults are
+  centralized in `databricks.yml`. Setup details: [docs/setup.md](docs/setup.md).
 
 ```bash
-# Frontend dev (Vite dev server proxies /api to localhost:8000)
-cd src/app/frontend && npm install && npm run dev
+databricks bundle validate --strict --target dev --profile FEVM
+databricks bundle deploy --target dev --profile FEVM
+databricks bundle run <job-key> --target dev --profile FEVM
 
-# Build frontend (output goes to src/app/static/)
-cd src/app/frontend && npm run build
-
-# Run backend locally
-cd src/app && uvicorn main:app --port 8000
-
-# Run backend tests
-cd src/app && python -m pytest tests/
+# App and its evaluation experiment: review, deploy, then start.
+databricks bundle plan --select apps.clinical_extractor,experiments.clinical_extractor_evaluations --target dev --profile FEVM
+databricks bundle deploy --select apps.clinical_extractor,experiments.clinical_extractor_evaluations --target dev --profile FEVM
+databricks bundle run clinical_extractor --target dev --profile FEVM
 ```
 
-### Architecture
+Job keys by resource file:
 
-- `main.py` — FastAPI entrypoint, mounts SPA from `static/`, initializes Lakebase DB on startup (falls back to hardcoded presets if unavailable)
-- `api/routes.py` — API routes under `/api/v1` for models, workspace endpoint discovery and model settings, presets, inference, and load testing
-- `api/schemas.py` — Pydantic models: `InferenceRequest`, `InferenceResponse`, `Preset`, `PresetCreate`, `PresetUpdate`
-- `api/presets.py` — Hardcoded preset configurations (fallback when Lakebase is unavailable)
-- `api/database.py` — Lakebase (PostgreSQL via psycopg2) CRUD for presets. It reads `LAKEBASE_DB_*` when operators configure a database binding and environment values; the repository does not currently provide that binding
-- `models.json` — Seeds the default serving-endpoint selection and defines endpoint API contracts and per-endpoint settings (max_tokens, timeout, temperature). A saved model selection can override the default list at runtime.
-- `app.yaml` — Databricks App deployment config
+- `medgemma.jobs.yml`: `medgemma_register`, `medgemma_deploy`, `medgemma_benchmark`
+- `batch.jobs.yml`: `prepare_batch_input`, `batch_inference_udf`, `batch_inference_sgc`
+- `vllm.jobs.yml`: `medgemma_vllm`, `inference_vllm_qwen`
+- `finetune.jobs.yml`: `finetune_medgemma`, `finetune_qwen3_disease`
 
-### Endpoint Contract System
+## App development
 
-The app supports three ways to pass JSON schemas to serving endpoints, configured per-endpoint in `models.json` under `contracts`:
+With the Python virtual environment active, run from the repository root:
 
-| Contract | Used by | How schema is sent |
-|---|---|---|
-| `custom_inputs_schema` (default) | MedGemma XGrammar endpoints | `custom_inputs.schema` field |
-| `ppt_json_schema` | `databricks-*` PPT endpoints | `response_format.json_schema` |
-| `openai_guided_json` | vLLM endpoints | `guided_json` + `guided_decoding_backend` fields |
-
-Default: endpoints starting with `databricks-` get `ppt_json_schema`, all others get `custom_inputs_schema`.
-
-### Frontend components
-
-React 18 + TypeScript + Vite. Uses Monaco Editor for JSON schema editing.
-
-- `App.tsx` — Main layout: schema editor (visual/JSON modes), prompt input, model comparison slots (up to 3)
-- `SchemaBuilder.tsx` — Visual JSON schema builder
-- `ModelResultColumn.tsx` — Single model result display
-- `FormattedView.tsx` — Formatted JSON result renderer
-- `PresetManager.tsx` — Preset CRUD modal
-
-## XGrammar Constrained Generation
-
-`MedGemmaChatModel.load_context` in `src/medgemma/model.py` builds a `xgr.GrammarCompiler` from the tokenizer. At inference, `predict` extracts the JSON schema from `params.custom_inputs["schema"]` and compiles it into a `LogitsProcessor` that constrains token sampling to valid JSON. If schema is omitted from `custom_inputs`, generation is unconstrained. Compiled grammars are cached per schema string.
-
-## MLflow Model Logging Pattern
-
-`01_register.py` uses code-based model logging:
-
-```python
-mlflow.pyfunc.log_model(
-    python_model=model_code_path,  # path to model.py (co-located in same directory)
-    artifacts={"model-weights": LOCAL_MODEL_PATH},
-    metadata={"task": "llm/v1/chat"},
-    ...
-)
+```bash
+python -m pip install -r src/app/requirements-dev.txt
+python -m pytest src/app/tests -q
+npm --prefix src/app/frontend ci
+npm --prefix src/app/frontend run dev
+npm --prefix src/app/frontend run typecheck
+npm --prefix src/app/frontend run build
+# In a separate terminal:
+cd src/app && DATABRICKS_CONFIG_PROFILE=FEVM uvicorn main:app --reload --port 8000
 ```
 
-`model.py` is what MLflow loads at serving time, so inference logic changes must be made there. It must stay co-located with `01_register.py` (same directory) because the path is resolved dynamically.
+- Edit `src/app/frontend/src/` and `frontend/public/`; rebuild tracked `static/`
+  before deploying. Vite proxies `/api` to port 8000 during local development.
+- `main.py` mounts the SPA and initializes Lakebase. The app binds Postgres,
+  AI Extract, the evaluation warehouse and experiment, and serving endpoints in
+  `resources/clinical_extractor.app.yml`; runtime environment lives in `app.yaml`.
+- `api/routes.py` orchestrates discovery, settings, presets, inference, and load
+  testing. Pure AI Extract transformations live in `api/ai_extract.py`; shared
+  JSON/schema transformations live in `api/json_output.py`.
+- `api/evaluations.py` runs ground-truth evaluations with Lakebase persistence
+  and MLflow reporting. Dataset queries use the forwarded user token and SQL scope.
+- `api/database.py` reads injected `PG*` settings plus `LAKEBASE_ENDPOINT` and
+  refreshes OAuth credentials. Legacy `LAKEBASE_DB_*` values remain supported.
+  Without Lakebase the app uses built-in presets and in-memory model settings;
+  preset writes and evaluation runs require the database.
+- `models.json` seeds model selection, explicit request contracts, and inference
+  defaults. Selecting a model does not grant access: attach endpoints with
+  `CAN_QUERY` in the app resource definition.
+- Supported serving contracts: `custom_inputs_schema` (`custom_inputs.schema`),
+  `ppt_json_schema` (`response_format.json_schema`), and `openai_guided_json`
+  (`guided_json` + `guided_decoding_backend`). See [architecture](docs/architecture.md).
+- Test path setup belongs in `src/app/tests/conftest.py`.
 
-## Key Configuration
+## Model workflow constraints
 
-| Variable | Default | Source |
-|---|---|---|
-| `catalog` | `pavan_naidu_catalog` | `databricks.yml` |
-| `schema` | `mlops` | `databricks.yml` |
-| MedGemma model path | `/Volumes/${catalog}/${schema}/model_weights/${hf_model_name}/bf16` | Derived in `src/medgemma/01_register.py`; the `model_weights` UC volume must already exist |
-| MedGemma registered model | `medgemma_xgrammar_structured` | `databricks.yml` `medgemma_registered_model_name` |
-| MedGemma endpoint base | `medgemma-1_5-4b-xgrammar` | `databricks.yml` `medgemma_endpoint_name`; deployment appends the workload suffix (`-a10` by default) |
-| MedGemma vLLM endpoint | `medgemma-1-5-4b-vllm-endpoint` | `databricks.yml` `medgemma_vllm.endpoint_name` |
-| App name | `clinical-extractor` | `databricks.yml` `resources.apps.clinical_extractor.name` |
-| Batch UDF GPU node type | `g5.2xlarge` (2 workers) | `databricks.yml` `gpu_node_type`, `batch_inference_udf.job_clusters` |
-| `MLFLOW_EXPERIMENT_ID` | `2468185612186458` | `src/batch/02_batch_inference_udf.py`, `src/medgemma/03_benchmark_endpoint.py` |
-| Fine-tuned registered model | `medgemma_xgrammar_finetuned` | `databricks.yml` `finetune_registered_model_name` |
-| HuggingFace token | Secret `pavan_naidu/hf_token` | `medgemma/01_register.py`, `vllm/medgemma_vllm.py`, `vllm/inference_vllm_qwen.py`, `finetune/finetune_medgemma.py` |
+- Model workflows are grouped by family in `src/models/qwen/` and
+  `src/models/medgemma/`; see [src/README.md](src/README.md) for job mappings.
+  Their Python files are Databricks source notebooks with `# COMMAND ----------` separators and
+  `# MAGIC %md` markdown cells, except `src/models/medgemma/xgrammar/model.py`.
+- `model.py` is the MLflow artifact loaded at serving time. Keep it co-located
+  with `01_register.py` and use code-based `python_model` logging; bitsandbytes
+  model objects cannot be serialized by MLflow.
+- `src/models/medgemma/finetune.py` reuses `xgrammar/model.py` relative to its
+  notebook directory. Update both logging paths if that module ever moves.
+- The model selects bf16 on SM >= 8.0 (A10/A100) and NF4 on SM 7.5 (T4).
+  `load_context` builds an XGrammar compiler; inference compiles and caches
+  `params.custom_inputs["schema"]`. An omitted schema leaves generation unconstrained.
+- Keep JSON grammar whitespace bounded so it cannot exhaust the token budget.
+  Temperature zero uses greedy decoding; positive temperatures use sampling.
+  Registration includes the vitals prompt that previously stalled on whitespace.
+- Keep notebook widget names aligned with job `base_parameters` in `resources/`.
+  MedGemma endpoint names append a workload suffix (`-a10` by default); keep the
+  workload type aligned across deployment, benchmark, and UDF jobs.
+- Create `<catalog>.<schema>.model_weights` before registration or SGC batch
+  inference. The bundle does not create that Unity Catalog volume.
+- Batch notebooks set the `databricks-uc` registry URI; avoid duplicate resets.
+  Historical benchmark notebooks use MLflow experiment `2468185612186458`;
+  app evaluations use their bound experiment instead.
+- MedGemma downloads use Databricks secret `pavan_naidu/hf_token`.
+- The UDF job uses two `g5.2xlarge` workers by default; Serverless GPU jobs
+  request `GPU_1xA10` directly.
+- The classic job uses 17.3 LTS ML GPU and checks one SQL endpoint request before
+  loading model weights. DBR 16.4's `ai_query` rejected this ChatModel's chat response.
+  Its local model instance disables automatic forward-pass compilation after
+  PyTorch 2.7 repeatedly captured CUDA graphs for changing prompt lengths.
 
-## Important Constraints
+## Shared and local files
 
-- bitsandbytes-quantized models cannot be serialized by MLflow; code-based `python_model` logging avoids serializing the model object.
-- `model.py` auto-selects dtype by GPU: bf16 on SM >= 8.0 (A10/A100), NF4 4-bit on SM 7.5 (T4).
-- `batch_inference_*` notebooks call `mlflow.set_registry_uri("databricks-uc")`; avoid duplicate registry URI resets across cells.
-- Keep notebook widget names aligned with `databricks.yml` base parameters.
-- The `model_weights` Unity Catalog volume must exist before running registration or the SGC batch path. With the defaults, create `pavan_naidu_catalog.mlops.model_weights`; override catalog/schema consistently when using another target.
-- The Databricks App (`clinical-extractor`) is defined in `databricks.yml`. A targeted `bundle deploy` uploads it; run `databricks bundle run clinical_extractor` afterward to start a deployment, or use the Databricks Apps deployment flow.
-- The repository currently has no Lakebase resource binding or `LAKEBASE_DB_*` configuration. The app therefore falls back to hardcoded presets and in-memory model settings unless operators add a Lakebase binding and matching environment configuration.
-- The classic batch UDF job uses a two-worker `g5.2xlarge` job cluster. Serverless GPU jobs instead request `GPU_1xA10` compute directly.
+- Keep `docs/`, `showcase/`, lockfiles, and `src/app/static/` in Git.
+- `output/`, `docs/archive/`, export `.pages.json` metadata, editor settings,
+  caches, and virtual environments are local and ignored.
+- Bundle sync excludes documentation, showcase material, frontend source, and
+  tests. Build the frontend locally before deployment; the app serves `static/`.

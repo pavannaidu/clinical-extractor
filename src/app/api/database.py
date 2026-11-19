@@ -1,4 +1,4 @@
-"""Lakebase (PostgreSQL) connection and preset CRUD operations."""
+"""Lakebase connections and persistence for presets, settings, and evaluations."""
 
 import json
 import logging
@@ -88,7 +88,7 @@ def get_db():
 
 
 def init_db():
-    """Create the presets and app_settings tables if they don't exist."""
+    """Create application tables if they don't exist."""
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(f"CREATE SCHEMA IF NOT EXISTS {APP_SCHEMA}")
@@ -114,6 +114,64 @@ def init_db():
                     key TEXT PRIMARY KEY,
                     value JSONB NOT NULL,
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS clinical_extractor.evaluation_runs (
+                    id TEXT PRIMARY KEY,
+                    owner_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    table_name TEXT NOT NULL,
+                    input_column TEXT NOT NULL,
+                    ground_truth_column TEXT NOT NULL,
+                    identifier_column TEXT,
+                    model TEXT NOT NULL,
+                    preset_id TEXT NOT NULL,
+                    schema_json TEXT NOT NULL,
+                    system_prompt TEXT NOT NULL DEFAULT '',
+                    row_limit INTEGER NOT NULL DEFAULT 100,
+                    enable_groundedness BOOLEAN NOT NULL DEFAULT FALSE,
+                    enable_completeness BOOLEAN NOT NULL DEFAULT FALSE,
+                    status TEXT NOT NULL DEFAULT 'queued',
+                    total_rows INTEGER NOT NULL DEFAULT 0,
+                    completed_rows INTEGER NOT NULL DEFAULT 0,
+                    succeeded_rows INTEGER NOT NULL DEFAULT 0,
+                    failed_rows INTEGER NOT NULL DEFAULT 0,
+                    mlflow_experiment_id TEXT,
+                    mlflow_run_id TEXT,
+                    aggregate_metrics JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    error_code TEXT,
+                    error_message TEXT,
+                    cancel_requested BOOLEAN NOT NULL DEFAULT FALSE,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    started_at TIMESTAMPTZ,
+                    completed_at TIMESTAMPTZ,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS evaluation_runs_owner_created_idx
+                ON clinical_extractor.evaluation_runs (owner_id, created_at DESC)
+            """)
+            cur.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS evaluation_runs_one_active_per_owner_idx
+                ON clinical_extractor.evaluation_runs (owner_id)
+                WHERE status IN ('queued', 'running')
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS clinical_extractor.evaluation_results (
+                    run_id TEXT NOT NULL REFERENCES clinical_extractor.evaluation_runs(id) ON DELETE CASCADE,
+                    record_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    latency_ms DOUBLE PRECISION,
+                    matched_fields INTEGER NOT NULL DEFAULT 0,
+                    total_fields INTEGER NOT NULL DEFAULT 0,
+                    mismatched_paths JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    schema_valid BOOLEAN NOT NULL DEFAULT FALSE,
+                    mlflow_trace_id TEXT,
+                    error_message TEXT,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    PRIMARY KEY (run_id, record_id)
                 )
             """)
 
@@ -272,3 +330,218 @@ def delete_preset(preset_id: str) -> str:
                 "DELETE FROM clinical_extractor.presets WHERE id = %s", (preset_id,)
             )
             return "deleted"
+
+
+def mark_evaluation_runs_interrupted() -> int:
+    """Mark work that cannot survive an app process restart as interrupted."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE clinical_extractor.evaluation_runs
+                SET status = 'interrupted',
+                    error_code = 'APP_RESTARTED',
+                    error_message = 'The app restarted before this evaluation finished.',
+                    completed_at = NOW(),
+                    updated_at = NOW()
+                WHERE status IN ('queued', 'running')
+                """
+            )
+            return cur.rowcount
+
+
+def _decode_json(value, default):
+    if value is None:
+        return default
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return default
+    return value
+
+
+def _evaluation_run_row(row: dict) -> dict:
+    result = dict(row)
+    result["aggregate_metrics"] = _decode_json(
+        result.get("aggregate_metrics"), {}
+    )
+    return result
+
+
+def create_evaluation_run(values: dict) -> dict:
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                INSERT INTO clinical_extractor.evaluation_runs (
+                    id, owner_id, name, table_name, input_column,
+                    ground_truth_column, identifier_column, model, preset_id,
+                    schema_json, system_prompt, row_limit, enable_groundedness,
+                    enable_completeness, total_rows, mlflow_experiment_id,
+                    mlflow_run_id
+                ) VALUES (
+                    %(id)s, %(owner_id)s, %(name)s, %(table_name)s,
+                    %(input_column)s, %(ground_truth_column)s,
+                    %(identifier_column)s, %(model)s, %(preset_id)s,
+                    %(schema_json)s, %(system_prompt)s, %(row_limit)s,
+                    %(enable_groundedness)s, %(enable_completeness)s,
+                    %(total_rows)s, %(mlflow_experiment_id)s, %(mlflow_run_id)s
+                )
+                RETURNING *
+                """,
+                values,
+            )
+            return _evaluation_run_row(cur.fetchone())
+
+
+def has_active_evaluation_run(owner_id: str) -> bool:
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT 1
+                FROM clinical_extractor.evaluation_runs
+                WHERE owner_id = %s AND status IN ('queued', 'running')
+                LIMIT 1
+                """,
+                (owner_id,),
+            )
+            return cur.fetchone() is not None
+
+
+def list_evaluation_runs(owner_id: str, limit: int = 50) -> list[dict]:
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT *
+                FROM clinical_extractor.evaluation_runs
+                WHERE owner_id = %s
+                ORDER BY created_at DESC
+                LIMIT %s
+                """,
+                (owner_id, limit),
+            )
+            return [_evaluation_run_row(row) for row in cur.fetchall()]
+
+
+def get_evaluation_run(run_id: str, owner_id: str) -> dict | None:
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT *
+                FROM clinical_extractor.evaluation_runs
+                WHERE id = %s AND owner_id = %s
+                """,
+                (run_id, owner_id),
+            )
+            row = cur.fetchone()
+            return _evaluation_run_row(row) if row else None
+
+
+def update_evaluation_run(run_id: str, **values) -> dict | None:
+    allowed = {
+        "status",
+        "completed_rows",
+        "succeeded_rows",
+        "failed_rows",
+        "aggregate_metrics",
+        "error_code",
+        "error_message",
+        "cancel_requested",
+        "started_at",
+        "completed_at",
+        "mlflow_run_id",
+        "mlflow_experiment_id",
+    }
+    updates = {key: value for key, value in values.items() if key in allowed}
+    if not updates:
+        raise ValueError("No evaluation run fields to update")
+    assignments = []
+    params = []
+    for key, value in updates.items():
+        assignments.append(f"{key} = %s")
+        if key == "aggregate_metrics":
+            value = json.dumps(value)
+        params.append(value)
+    assignments.append("updated_at = NOW()")
+    params.append(run_id)
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                f"""
+                UPDATE clinical_extractor.evaluation_runs
+                SET {', '.join(assignments)}
+                WHERE id = %s
+                RETURNING *
+                """,
+                params,
+            )
+            row = cur.fetchone()
+            return _evaluation_run_row(row) if row else None
+
+
+def evaluation_cancel_requested(run_id: str) -> bool:
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT cancel_requested FROM clinical_extractor.evaluation_runs WHERE id = %s",
+                (run_id,),
+            )
+            row = cur.fetchone()
+            return bool(row and row[0])
+
+
+def upsert_evaluation_result(values: dict) -> None:
+    params = dict(values)
+    params["mismatched_paths"] = json.dumps(values.get("mismatched_paths", []))
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO clinical_extractor.evaluation_results (
+                    run_id, record_id, status, latency_ms, matched_fields,
+                    total_fields, mismatched_paths, schema_valid,
+                    mlflow_trace_id, error_message
+                ) VALUES (
+                    %(run_id)s, %(record_id)s, %(status)s, %(latency_ms)s,
+                    %(matched_fields)s, %(total_fields)s,
+                    %(mismatched_paths)s, %(schema_valid)s,
+                    %(mlflow_trace_id)s, %(error_message)s
+                )
+                ON CONFLICT (run_id, record_id) DO UPDATE SET
+                    status = EXCLUDED.status,
+                    latency_ms = EXCLUDED.latency_ms,
+                    matched_fields = EXCLUDED.matched_fields,
+                    total_fields = EXCLUDED.total_fields,
+                    mismatched_paths = EXCLUDED.mismatched_paths,
+                    schema_valid = EXCLUDED.schema_valid,
+                    mlflow_trace_id = EXCLUDED.mlflow_trace_id,
+                    error_message = EXCLUDED.error_message
+                """,
+                params,
+            )
+
+
+def list_evaluation_results(run_id: str) -> list[dict]:
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT *
+                FROM clinical_extractor.evaluation_results
+                WHERE run_id = %s
+                ORDER BY created_at ASC, record_id ASC
+                """,
+                (run_id,),
+            )
+            rows = []
+            for row in cur.fetchall():
+                value = dict(row)
+                value["mismatched_paths"] = _decode_json(
+                    value.get("mismatched_paths"), []
+                )
+                rows.append(value)
+            return rows

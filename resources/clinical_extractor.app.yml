@@ -1,0 +1,91 @@
+resources:
+  apps:
+    clinical_extractor:
+      name: ${var.app_name}
+      description: "Interactive UI for structured clinical data extraction"
+      source_code_path: ../src/app
+      user_api_scopes:
+        - sql
+      resources:
+        - name: postgres
+          postgres:
+            branch: projects/${var.lakebase_project}/branches/${var.lakebase_branch}
+            database: projects/${var.lakebase_project}/branches/${var.lakebase_branch}/databases/${var.lakebase_database}
+            permission: CAN_CONNECT_AND_CREATE
+        - name: ai-extract
+          uc_securable:
+            securable_type: FUNCTION
+            securable_full_name: system.ai.ai_extract
+            permission: EXECUTE
+        - name: evaluation-warehouse
+          sql_warehouse:
+            id: ${var.evaluation_warehouse_id}
+            permission: CAN_USE
+        - name: evaluation-experiment
+          experiment:
+            experiment_id: ${resources.experiments.clinical_extractor_evaluations.id}
+            permission: CAN_EDIT
+        - name: medgemma-vllm
+          serving_endpoint:
+            name: medgemma-1-5-4b-vllm-endpoint
+            permission: CAN_QUERY
+        - name: qwen-vllm
+          serving_endpoint:
+            name: qwen3-4b-vllm-endpoint
+            permission: CAN_QUERY
+        - name: qwen-finetuned-vllm
+          serving_endpoint:
+            name: ${var.qwen3_finetuned_endpoint_name}
+            permission: CAN_QUERY
+        - name: claude-opus-4-6
+          serving_endpoint:
+            name: databricks-claude-opus-4-6
+            permission: CAN_QUERY
+        - name: claude-sonnet-4-6
+          serving_endpoint:
+            name: databricks-claude-sonnet-4-6
+            permission: CAN_QUERY
+        - name: claude-sonnet-4-5
+          serving_endpoint:
+            name: databricks-claude-sonnet-4-5
+            permission: CAN_QUERY
+        - name: claude-opus-4-5
+          serving_endpoint:
+            name: databricks-claude-opus-4-5
+            permission: CAN_QUERY
+        - name: claude-opus-4-1
+          serving_endpoint:
+            name: databricks-claude-opus-4-1
+            permission: CAN_QUERY
+        - name: claude-sonnet-4
+          serving_endpoint:
+            name: databricks-claude-sonnet-4
+            permission: CAN_QUERY
+        - name: claude-haiku-4-5
+          serving_endpoint:
+            name: databricks-claude-haiku-4-5
+            permission: CAN_QUERY
+        - name: gemini-3-1-flash-lite
+          serving_endpoint:
+            name: databricks-gemini-3-1-flash-lite
+            permission: CAN_QUERY
+        - name: gemini-2-5-pro
+          serving_endpoint:
+            name: databricks-gemini-2-5-pro
+            permission: CAN_QUERY
+        - name: gemini-2-5-flash
+          serving_endpoint:
+            name: databricks-gemini-2-5-flash
+            permission: CAN_QUERY
+        - name: gpt-5-4-mini
+          serving_endpoint:
+            name: databricks-gpt-5-4-mini
+            permission: CAN_QUERY
+        - name: gpt-oss-120b
+          serving_endpoint:
+            name: databricks-gpt-oss-120b
+            permission: CAN_QUERY
+        - name: gpt-oss-20b
+          serving_endpoint:
+            name: databricks-gpt-oss-20b
+            permission: CAN_QUERY

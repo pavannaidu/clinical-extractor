@@ -33,6 +33,7 @@
   let manualView = null;
   let chromeTimer = null;
   let fullscreenTrigger = null;
+  let restoreReaderAfterPrint = false;
 
   const displayNumber = (index) => String(index + 1).padStart(2, '0');
   const readerMode = () => document.body.classList.contains('reader-mode');
@@ -225,6 +226,18 @@
     fullscreenButton.textContent = active ? 'Exit full screen' : 'Full screen';
     fullscreenButton.setAttribute('aria-pressed', String(active));
   };
+
+  window.addEventListener('beforeprint', () => {
+    restoreReaderAfterPrint = readerMode();
+    document.body.classList.remove('reader-mode');
+    models.forEach((model) => model.slide.removeAttribute('aria-hidden'));
+  });
+
+  window.addEventListener('afterprint', () => {
+    if (restoreReaderAfterPrint) syncViewMode();
+    else render(currentIndex, false);
+    restoreReaderAfterPrint = false;
+  });
 
   const hideFullscreenChrome = () => {
     const focused = document.activeElement;

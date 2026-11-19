@@ -1,0 +1,4 @@
+resources:
+  experiments:
+    clinical_extractor_evaluations:
+      name: ${var.evaluation_experiment_name}

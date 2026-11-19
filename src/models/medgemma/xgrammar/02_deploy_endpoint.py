@@ -171,6 +171,40 @@ while time.time() < _deadline:
                 _diag.append(_log_resp.text[-4000:] if _log_resp.ok else _log_resp.text[:300])
         raise Exception("Endpoint deployment failed\n" + "\n".join(_diag))
     time.sleep(60)
+else:
+    raise TimeoutError(f"Endpoint {ENDPOINT_NAME} did not become ready within 60 minutes")
 
 print(f"\nEndpoint URL: {_host}/ml/endpoints/{ENDPOINT_NAME}")
 dbutils.jobs.taskValues.set(key="endpoint_name", value=ENDPOINT_NAME)
+
+# COMMAND ----------
+
+# DBTITLE 1,Validate Structured Endpoint Inference
+import json
+from jsonschema import validate
+
+smoke_schema = {
+    "type": "object",
+    "properties": {"medication": {"type": "string"}, "dosage": {"type": "string"}},
+    "required": ["medication", "dosage"],
+    "additionalProperties": False,
+}
+smoke_response = _requests.post(
+    f"{_host}/serving-endpoints/{ENDPOINT_NAME}/invocations",
+    headers=_headers,
+    json={
+        "messages": [{"role": "user", "content": "Extract medication and dosage: Amoxicillin 500mg orally three times daily."}],
+        "max_tokens": 128,
+        "custom_inputs": {"schema": json.dumps(smoke_schema)},
+    },
+    timeout=180,
+)
+smoke_response.raise_for_status()
+smoke_result = json.loads(smoke_response.json()["choices"][0]["message"]["content"])
+validate(instance=smoke_result, schema=smoke_schema)
+dbutils.notebook.exit(json.dumps({
+    "endpoint_name": ENDPOINT_NAME,
+    "model_name": FULL_MODEL_NAME,
+    "model_version": str(MODEL_VERSION),
+    "structured_smoke_test": smoke_result,
+}))
